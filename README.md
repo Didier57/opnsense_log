@@ -70,24 +70,22 @@ Storage uses **DuckDB** (columnar, analytics-friendly, single-file, no server).
 
 ## Quick start
 
-1. Copy the environment file and generate a password hash:
+1. Copy the environment file (default login is `admin` / `admin`):
 
    ```bash
    cp .env.example .env
-   docker compose build
-   docker compose run --rm opnsense-log-analyzer python scripts/hash_password.py
-   # paste the produced hash into AUTH_PASSWORD_HASH in .env
-   ```
-
-2. Start the stack:
-
-   ```bash
    docker compose up -d
    ```
 
-3. Open the web UI at <http://SERVER_IP:8080> and log in.
+   Set `AUTH_USERNAME` / `AUTH_PASSWORD` in `.env` (or `docker-compose.yml`) to change the
+   login. No hashing step is required. For a hash-based password instead, set
+   `AUTH_PASSWORD_HASH` (generate it with
+   `docker compose run --rm opnsense-log-analyzer python scripts/hash_password.py`); it takes
+   precedence over `AUTH_PASSWORD` when set.
 
-4. Configure OPNsense to send logs to this host:
+2. Open the web UI at <http://SERVER_IP:8080> and log in.
+
+3. Configure OPNsense to send logs to this host:
 
    **System → Settings → Logging → Remote destinations**
    add a destination `SERVER_IP:5140` (UDP by default), then apply.
@@ -114,7 +112,8 @@ All configuration is provided through environment variables (see `.env.example`)
 | `LOG_RETENTION_DAYS` | `30` | retention in days (`0` = unlimited) |
 | `AUTH_ENABLED` | `true` | enable local authentication |
 | `AUTH_USERNAME` | `admin` | login username |
-| `AUTH_PASSWORD_HASH` | – | Argon2 password hash |
+| `AUTH_PASSWORD` | `admin` | login password (plain text, simplest setup) |
+| `AUTH_PASSWORD_HASH` | – | Argon2 hash; takes precedence over `AUTH_PASSWORD` |
 | `SECRET_KEY` | – | JWT signing secret |
 | `DISPLAY_TIMEZONE` | `Europe/Luxembourg` | timezone used for display |
 | `LOG_LEVEL` | `INFO` | `INFO`/`WARNING`/`ERROR`/`DEBUG` |

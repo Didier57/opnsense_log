@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from ..config import settings
-from ..core.security import create_token, verify_password
+from ..core.security import create_token, verify_login_password
 from .deps import require_user
 from .schemas import LoginRequest
 
@@ -13,8 +13,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 @router.post("/login")
 def login(payload: LoginRequest, response: Response) -> dict:
-    valid = payload.username == settings.auth_username and verify_password(
-        payload.password, settings.auth_password_hash
+    valid = payload.username == settings.auth_username and verify_login_password(
+        payload.password
     )
     if not valid:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")

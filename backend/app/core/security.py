@@ -1,6 +1,7 @@
 """Authentication helpers: password hashing and JWT sessions."""
 from __future__ import annotations
 
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -24,6 +25,19 @@ def verify_password(password: str, password_hash: str) -> bool:
         return _hasher.verify(password_hash, password)
     except (VerifyMismatchError, Exception):  # noqa: BLE001
         return False
+
+
+def verify_login_password(password: str) -> bool:
+    """Verify a login password against the configured secret.
+
+    An argon2 hash (AUTH_PASSWORD_HASH) takes precedence when set, otherwise the
+    plain-text AUTH_PASSWORD is compared in constant time.
+    """
+    if settings.auth_password_hash:
+        return verify_password(password, settings.auth_password_hash)
+    if settings.auth_password:
+        return secrets.compare_digest(password, settings.auth_password)
+    return False
 
 
 def create_token(username: str) -> str:

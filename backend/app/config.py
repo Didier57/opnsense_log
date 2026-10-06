@@ -48,7 +48,10 @@ class Settings(BaseSettings):
     # --- Auth ---
     auth_enabled: bool = True
     auth_username: str = "admin"
-    # argon2 hash of the password. Generate with scripts/hash_password.py
+    # Plain-text password (simplest setup: set AUTH_PASSWORD in .env).
+    auth_password: str = "admin"
+    # Optional argon2 hash of the password; takes precedence over auth_password.
+    # Generate with scripts/hash_password.py
     auth_password_hash: str = ""
     secret_key: str = "change-me-in-production"
     token_expire_minutes: int = 480

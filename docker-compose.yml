@@ -18,6 +18,7 @@ services:
       LOG_RETENTION_DAYS: "${LOG_RETENTION_DAYS:-30}"
       AUTH_ENABLED: "${AUTH_ENABLED:-true}"
       AUTH_USERNAME: "${AUTH_USERNAME:-admin}"
+      AUTH_PASSWORD: "${AUTH_PASSWORD:-admin}"
       AUTH_PASSWORD_HASH: "${AUTH_PASSWORD_HASH:-}"
       SECRET_KEY: "${SECRET_KEY:-change-me-in-production}"
       DISPLAY_TIMEZONE: "${DISPLAY_TIMEZONE:-Europe/Luxembourg}"
