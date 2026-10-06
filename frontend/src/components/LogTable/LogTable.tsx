@@ -1,5 +1,5 @@
-import type { FirewallEvent } from "../types";
-import { actionClass, formatTime, portLabel } from "../format";
+import type { FirewallEvent } from "../../types";
+import { actionClass, formatTime, portLabel } from "../../format";
 
 interface Props {
   events: FirewallEvent[];

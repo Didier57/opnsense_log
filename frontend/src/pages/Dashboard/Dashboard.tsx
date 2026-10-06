@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { api } from "../api/client";
-import { StatCard } from "../components/StatCard";
-import { LineChart } from "../components/Charts/LineChart";
-import { BarList } from "../components/Charts/BarList";
-import type { Summary, TimeseriesPoint, TopItem } from "../types";
+import { api } from "../../api/client";
+import { StatCard } from "../../components/StatCard";
+import { LineChart } from "../../components/Charts/LineChart";
+import { BarList } from "../../components/Charts/BarList";
+import type { Summary, TimeseriesPoint, TopItem } from "../../types";
 
 export function Dashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
