@@ -37,6 +37,19 @@ DNSMASQ = """\
 2001:db8::50:aa 00:01:00:01:aa:bb 2001:db8::77 nas6 fd00::1234
 """
 
+DNSMASQ_HOSTS = """\
+# OPNsense auto-generated
+192.168.1.10 server
+192.168.1.11 printer printer.lan
+2001:db8::10 nas6
+not-a-line
+"""
+
+DNSMASQ_LEASES = """\
+192.168.1.200 laptop
+192.168.1.201 phone.vlan
+"""
+
 
 def test_parse_isc_v4():
     result = {lease["ip"]: lease for lease in parse_dhcp_leases(f"###/var/dhcpd/var/db/dhcpd.leases\n{ISC_V4}")}
@@ -70,16 +83,38 @@ def test_parse_dnsmasq():
     assert "192.168.1.121" not in result
 
 
+def test_parse_dnsmasq_hosts():
+    result = {
+        lease["ip"]: lease
+        for lease in parse_dhcp_leases(f"###/var/etc/dnsmasq-hosts\n{DNSMASQ_HOSTS}")
+    }
+    assert result["192.168.1.10"]["hostname"] == "server"
+    assert result["192.168.1.11"]["hostname"] == "printer"
+    assert result["2001:db8::10"]["hostname"] == "nas6"
+    assert result["192.168.1.10"]["source"] == "dnsmasq"
+
+
+def test_parse_dnsmasq_leases_hosts():
+    result = {
+        lease["ip"]: lease["hostname"]
+        for lease in parse_dhcp_leases(f"###/var/etc/dnsmasq-leases\n{DNSMASQ_LEASES}")
+    }
+    assert result["192.168.1.200"] == "laptop"
+    assert result["192.168.1.201"] == "phone.vlan"
+
+
 def test_parse_mixed_dump():
     dump = (
         f"###/var/dhcpd/var/db/dhcpd.leases\n{ISC_V4}"
         f"###/var/db/kea/kea-leases4.csv\n{KEA_CSV}"
         f"###/var/db/dnsmasq.leases\n{DNSMASQ}"
+        f"###/var/etc/dnsmasq-hosts\n{DNSMASQ_HOSTS}"
     )
     result = {lease["ip"]: lease["hostname"] for lease in parse_dhcp_leases(dump)}
     assert result["192.168.1.100"] == "laptop"
     assert result["192.168.1.50"] == "desktop"
     assert result["192.168.1.120"] == "pc-bureau"
+    assert result["192.168.1.10"] == "server"
 
 
 def test_resolver_prefers_dhcp_lease(tmp_path, monkeypatch):

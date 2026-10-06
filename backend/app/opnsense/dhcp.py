@@ -2,9 +2,12 @@
 
 Supports the legacy ISC lease files (`/var/dhcpd/var/db/dhcpd.leases`,
 `dhcpd6.leases`), the Kea memfile CSV files (`/var/db/kea/kea-leases4.csv`,
-`kea-leases6.csv`) and the Dnsmasq lease file (`/var/db/dnsmasq.leases`) used by
-the "Dnsmasq DNS & DHCP" service in OPNsense 25.x. The SSH command concatenates
-the files, each prefixed with a `###<path>` marker line.
+`kea-leases6.csv`), the Dnsmasq lease file (`/var/db/dnsmasq.leases`) and the
+Dnsmasq host files (`/var/etc/dnsmasq-hosts`, `/var/etc/dnsmasq-leases`) used by
+the "Dnsmasq DNS & DHCP" service in OPNsense 25.x. The host files are plain
+`IP hostname [aliases]` lists (like `/etc/hosts`) and cover both static DHCP
+mappings and the current dynamic leases published to DNS. The SSH command
+concatenates the files, each prefixed with a `###<path>` marker line.
 """
 from __future__ import annotations
 
@@ -21,6 +24,8 @@ _LEASE_PATHS = [
     "/var/db/dnsmasq.leases",
     "/var/db/dnsmasq.leases6",
     "/var/db/dnsmasq/dnsmasq.leases",
+    "/var/etc/dnsmasq-hosts",
+    "/var/etc/dnsmasq-leases",
 ]
 
 # Files whose `dhcp-leasefile` directive reveals the Dnsmasq lease path.
@@ -50,7 +55,8 @@ def discover_script() -> str:
         f"{_DISCOVER_CONFIGS} 2>/dev/null | "
         "sed -e 's/^dhcp-leasefile=//' -e 's/\"//g'; "
         f"find {_DISCOVER_DIRS} -maxdepth 3 "
-        "\\( -name '*.leases' -o -name 'kea-leases*.csv' \\) -type f 2>/dev/null"
+        "\\( -name '*.leases' -o -name 'kea-leases*.csv' "
+        "-o -name 'dnsmasq-hosts' -o -name 'dnsmasq-leases' \\) -type f 2>/dev/null"
     )
 
 
@@ -159,6 +165,23 @@ def _parse_dnsmasq(text: str) -> dict[str, dict]:
     return out
 
 
+def _parse_hosts(text: str) -> dict[str, dict]:
+    """Parse a dnsmasq hosts-style file: ``IP hostname [aliases...]``."""
+    out: dict[str, dict] = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) < 2 or not _is_ip(parts[0]):
+            continue
+        name = _norm_hostname(parts[1])
+        if not name:
+            continue
+        out.setdefault(parts[0], {"ip": parts[0], "hostname": name, "mac": ""})
+    return out
+
+
 def _split_sections(text: str) -> list[tuple[str, str]]:
     sections: list[tuple[str, str]] = []
     current_path: str | None = None
@@ -189,6 +212,8 @@ def _source_for(path: str) -> str:
 
 def _parse_section(path: str, content: str) -> dict[str, dict]:
     low = path.lower()
+    if "dnsmasq-hosts" in low or "dnsmasq-leases" in low:
+        return _parse_hosts(content)
     if "dnsmasq" in low:
         return _parse_dnsmasq(content)
     if low.endswith(".csv"):
