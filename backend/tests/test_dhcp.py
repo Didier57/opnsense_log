@@ -31,6 +31,12 @@ KEA_CSV = """address,hwaddr,client_id,valid_lifetime,expire,subnet_id,fqdn_fwd,f
 192.168.1.51,11:22:33:44:55:67,,4000,1750000000,1,1,1,,0,,1
 """
 
+DNSMASQ = """\
+1750000000 aa:bb:cc:11:22:33 192.168.1.120 pc-bureau 01:aa:bb:cc:11:22:33
+1750000000 aa:bb:cc:11:22:34 192.168.1.121 * 01:aa:bb:cc:11:22:34
+2001:db8::50:aa 00:01:00:01:aa:bb 2001:db8::77 nas6 fd00::1234
+"""
+
 
 def test_parse_isc_v4():
     result = {lease["ip"]: lease for lease in parse_dhcp_leases(f"###/var/dhcpd/var/db/dhcpd.leases\n{ISC_V4}")}
@@ -52,14 +58,28 @@ def test_parse_isc_v6():
     assert result["2001:db8::50"]["hostname"] == "nas6"
 
 
+def test_parse_dnsmasq():
+    result = {
+        lease["ip"]: lease
+        for lease in parse_dhcp_leases(f"###/var/db/dnsmasq.leases\n{DNSMASQ}")
+    }
+    assert result["192.168.1.120"]["hostname"] == "pc-bureau"
+    assert result["192.168.1.120"]["mac"] == "aa:bb:cc:11:22:33"
+    assert result["192.168.1.120"]["source"] == "dnsmasq"
+    assert result["2001:db8::77"]["hostname"] == "nas6"
+    assert "192.168.1.121" not in result
+
+
 def test_parse_mixed_dump():
     dump = (
         f"###/var/dhcpd/var/db/dhcpd.leases\n{ISC_V4}"
         f"###/var/db/kea/kea-leases4.csv\n{KEA_CSV}"
+        f"###/var/db/dnsmasq.leases\n{DNSMASQ}"
     )
     result = {lease["ip"]: lease["hostname"] for lease in parse_dhcp_leases(dump)}
     assert result["192.168.1.100"] == "laptop"
     assert result["192.168.1.50"] == "desktop"
+    assert result["192.168.1.120"] == "pc-bureau"
 
 
 def test_resolver_prefers_dhcp_lease(tmp_path, monkeypatch):

@@ -1,14 +1,16 @@
-"""Parse OPNsense DHCP leases (ISC dhcpd and Kea) fetched over SSH.
+"""Parse OPNsense DHCP leases (ISC dhcpd, Kea and Dnsmasq) fetched over SSH.
 
-Supports both the legacy ISC lease files
-(`/var/dhcpd/var/db/dhcpd.leases`, `dhcpd6.leases`) and the newer Kea memfile
-CSV files (`/var/db/kea/kea-leases4.csv`, `kea-leases6.csv`). The SSH command
-concatenates the files, each prefixed with a `###<path>` marker line.
+Supports the legacy ISC lease files (`/var/dhcpd/var/db/dhcpd.leases`,
+`dhcpd6.leases`), the Kea memfile CSV files (`/var/db/kea/kea-leases4.csv`,
+`kea-leases6.csv`) and the Dnsmasq lease file (`/var/db/dnsmasq.leases`) used by
+the "Dnsmasq DNS & DHCP" service in OPNsense 25.x. The SSH command concatenates
+the files, each prefixed with a `###<path>` marker line.
 """
 from __future__ import annotations
 
 import csv
 import io
+import ipaddress
 import re
 
 _LEASE_PATHS = [
@@ -16,6 +18,8 @@ _LEASE_PATHS = [
     "/var/dhcpd/var/db/dhcpd6.leases",
     "/var/db/kea/kea-leases4.csv",
     "/var/db/kea/kea-leases6.csv",
+    "/var/db/dnsmasq.leases",
+    "/var/db/dnsmasq.leases6",
 ]
 
 _BLOCK_RE = re.compile(r"^(lease|ia-na|ia-pd|iaaddr|ia-ta|host)\s+(\S+)\s*\{")
@@ -85,6 +89,38 @@ def _parse_kea_csv(text: str) -> dict[str, dict]:
     return out
 
 
+def _is_ip(value: str) -> bool:
+    try:
+        ipaddress.ip_address(value)
+        return True
+    except ValueError:
+        return False
+
+
+def _parse_dnsmasq(text: str) -> dict[str, dict]:
+    """Parse a Dnsmasq lease file.
+
+    Native format is one lease per line:
+    ``<expiry> <mac|duid> <ip> <hostname|*> <client-id>``.
+    Some builds may instead write an ISC-style file, detected by braces.
+    """
+    if "{" in text:
+        return _parse_isc(text)
+    out: dict[str, dict] = {}
+    for raw in text.splitlines():
+        parts = raw.split()
+        if len(parts) < 4:
+            continue
+        mac, ip, hostname = parts[1], parts[2], parts[3]
+        if not _is_ip(ip) or hostname == "*":
+            continue
+        name = _norm_hostname(hostname)
+        if not name:
+            continue
+        out.setdefault(ip, {"ip": ip, "hostname": name, "mac": mac})
+    return out
+
+
 def _split_sections(text: str) -> list[tuple[str, str]]:
     sections: list[tuple[str, str]] = []
     current_path: str | None = None
@@ -104,8 +140,19 @@ def _split_sections(text: str) -> list[tuple[str, str]]:
     return sections
 
 
+def _source_for(path: str) -> str:
+    low = path.lower()
+    if "dnsmasq" in low:
+        return "dnsmasq"
+    if low.endswith(".csv"):
+        return "kea"
+    return "isc"
+
+
 def _parse_section(path: str, content: str) -> dict[str, dict]:
     low = path.lower()
+    if "dnsmasq" in low:
+        return _parse_dnsmasq(content)
     if low.endswith(".csv"):
         return _parse_kea_csv(content)
     if not path and "," in (content.splitlines()[0] if content.splitlines() else ""):
@@ -117,7 +164,7 @@ def parse_dhcp_leases(text: str) -> list[dict]:
     """Return a list of `{ip, hostname, mac, source}` from the concatenated dump."""
     leases: dict[str, dict] = {}
     for path, content in _split_sections(text):
-        source = "kea" if path.lower().endswith(".csv") else "isc"
+        source = _source_for(path)
         for ip, lease in _parse_section(path, content).items():
             lease["source"] = source
             leases.setdefault(ip, lease)
