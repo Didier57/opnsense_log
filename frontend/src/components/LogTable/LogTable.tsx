@@ -21,40 +21,50 @@ export function LogTable({ events, onSelect, interfaceMap = {}, ruleMap = {} }: 
       <table className="log-table">
         <thead>
           <tr>
-            <th>Time</th>
             <th>Interface</th>
-            <th>Action</th>
             <th>In/Out</th>
-            <th>Proto</th>
+            <th>Date-Heure</th>
+            <th>Protocol</th>
             <th>Source</th>
             <th>Destination</th>
+            <th>Action</th>
             <th>Label</th>
           </tr>
         </thead>
         <tbody>
           {events.map((event, index) => (
             <tr key={`${event.event_time}-${index}`} onClick={() => onSelect?.(event)}>
-              <td className="mono">{formatTime(event.event_time)}</td>
-              <td title={event.interface}>{interfaceLabel(event, interfaceMap)}</td>
-              <td>
-                <span className={`badge ${actionClass(event.action)}`}>{event.action.toUpperCase()}</span>
+              <td title={interfaceLabel(event, interfaceMap)}>
+                <span className="truncate">{interfaceLabel(event, interfaceMap)}</span>
               </td>
               <td>
                 <span className="badge other">
                   {event.direction ? event.direction[0].toUpperCase() + event.direction.slice(1) : "—"}
                 </span>
               </td>
+              <td className="mono">{formatTime(event.event_time)}</td>
               <td>{event.protocol}</td>
-              <td className="mono">
-                {event.src_ip}
-                {portLabel(event.src_port)}
+              <td className="mono" title={`${event.src_ip}${portLabel(event.src_port)}`}>
+                <span className="truncate">
+                  {event.src_ip}
+                  {portLabel(event.src_port)}
+                </span>
               </td>
-              <td className="mono">
-                {event.dst_ip}
-                {portLabel(event.dst_port)}
+              <td className="mono" title={`${event.dst_ip}${portLabel(event.dst_port)}`}>
+                <span className="truncate">
+                  {event.dst_ip}
+                  {portLabel(event.dst_port)}
+                </span>
+              </td>
+              <td>
+                <span className={`badge ${actionClass(event.action)}`}>{event.action.toUpperCase()}</span>
               </td>
               <td title={ruleMap[event.rule_id] ?? ""}>
-                {ruleMap[event.rule_id] ?? <span className="muted">—</span>}
+                {ruleMap[event.rule_id] ? (
+                  <span className="truncate">{ruleMap[event.rule_id]}</span>
+                ) : (
+                  <span className="muted">—</span>
+                )}
               </td>
             </tr>
           ))}

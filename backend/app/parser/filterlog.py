@@ -81,7 +81,7 @@ def parse_payload(
         rule_number=_int(_field(parts, 0)),
         sub_rule=_field(parts, 1),
         anchor=_field(parts, 2),
-        rule_id=_field(parts, 3),
+        rule_id=(_field(parts, 3).replace("-", "").lower()),
         interface=_field(parts, 4),
         reason=_field(parts, 5),
         action=_field(parts, 6).lower(),

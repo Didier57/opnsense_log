@@ -120,3 +120,64 @@ def test_parse_config_returns_interfaces_and_rules():
     assert disabled["action"] == "block"
     # "any" sources render as "*"
     assert disabled["source"] == "*"
+
+
+NEW_MODEL_CONFIG = """<?xml version="1.0"?>
+<opnsense>
+  <OPNsense>
+    <Firewall>
+      <Filter>
+        <rules>
+          <rule uuid="cd4617bd680a0a5aa4c5694f2eefa56e">
+            <enabled>1</enabled>
+            <action>pass</action>
+            <interface>lan</interface>
+            <direction>out</direction>
+            <protocol>tcp</protocol>
+            <source_net>lan</source_net>
+            <source_port>any</source_port>
+            <destination_net>any</destination_net>
+            <destination_port>443</destination_port>
+            <description>Allow outbound web</description>
+          </rule>
+          <rule uuid="AABBCCDD-1122-3344-5566-77889900AABB">
+            <enabled>0</enabled>
+            <action>block</action>
+            <interface>wan</interface>
+            <protocol>tcp/udp</protocol>
+            <source_not>1</source_not>
+            <source_net>wan</source_net>
+            <destination_net>any</destination_net>
+            <description>Block inbound</description>
+          </rule>
+        </rules>
+      </Filter>
+    </Firewall>
+  </OPNsense>
+</opnsense>
+"""
+
+
+def test_parse_new_model_rules_uses_uuid_as_label():
+    _, rules = parse_config(NEW_MODEL_CONFIG)
+    assert len(rules) == 2
+    web = next(r for r in rules if r["description"] == "Allow outbound web")
+    # filterlog logs the rule uuid -> the label is the normalised uuid
+    assert web["rule_id"] == "cd4617bd680a0a5aa4c5694f2eefa56e"
+    assert web["label"] == web["rule_id"]
+    assert web["action"] == "pass"
+    assert web["interface"] == "lan"
+    assert web["protocol"] == "tcp"
+    assert web["direction"] == "out"
+    assert web["enabled"] is True
+    assert web["destination"] == "any:443"
+
+
+def test_parse_new_model_rule_id_is_normalised():
+    _, rules = parse_config(NEW_MODEL_CONFIG)
+    block = next(r for r in rules if r["description"] == "Block inbound")
+    # dashes stripped + lowercased so it matches the logged label
+    assert block["rule_id"] == "aabbccdd11223344556677889900aabb"
+    assert block["enabled"] is False
+    assert block["action"] == "block"
+    assert block["source"] == "!wan"

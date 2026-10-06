@@ -122,15 +122,64 @@ def _source_to_str(element: ET.Element | None) -> str:
     return value
 
 
-def parse_rules(root: ET.Element) -> list[dict]:
-    """Return rules keyed by the OPNsense log label (``calcRuleHash``)."""
+def _norm_id(value: str) -> str:
+    """Normalise a rule label/uuid so config and log values always match."""
+    return (value or "").replace("-", "").strip().lower()
+
+
+def _rule_net(rule: ET.Element, prefix: str) -> str:
+    net = _text(rule, f"{prefix}_net")
+    port = _text(rule, f"{prefix}_port")
+    value = f"{net}:{port}" if port else net
+    if _text(rule, f"{prefix}_not") == "1":
+        value = f"!{value}"
+    return value
+
+
+def _new_model_rules(root: ET.Element) -> list[dict]:
+    """Rules managed by the modern ``OPNsense\\Firewall\\Filter`` model.
+
+    Recent OPNsense stores firewall rules in the MVC model mounted at
+    ``//OPNsense/Firewall/Filter`` and labels every pf rule with its ``uuid``
+    (see ``FilterRuleContainerField::serialize()`` -> ``'label' => uuid``).
+    The ``filterlog`` label therefore equals the rule uuid, *not* a hash.
+    """
+    rules: list[dict] = []
+    container = root.find("OPNsense/Firewall/Filter/rules")
+    if container is None:
+        return rules
+    for rule in container.findall("rule"):
+        rule_id = _norm_id(rule.get("uuid", ""))
+        if not rule_id:
+            continue
+        rules.append(
+            {
+                "rule_id": rule_id,
+                "label": rule_id,
+                "tracker": "",
+                "rule_number": None,
+                "description": _text(rule, "description"),
+                "interface": _text(rule, "interface"),
+                "action": _text(rule, "action", "pass"),
+                "direction": _text(rule, "direction", "in"),
+                "protocol": _text(rule, "protocol", "any"),
+                "source": _rule_net(rule, "source"),
+                "destination": _rule_net(rule, "destination"),
+                "enabled": _text(rule, "enabled", "1") == "1",
+            }
+        )
+    return rules
+
+
+def _legacy_rules(root: ET.Element) -> list[dict]:
+    """Rules stored in the legacy ``<filter><rule>`` section (hashed label)."""
     rules: list[dict] = []
     filter_el = root.find("filter")
     if filter_el is None:
         return rules
     for rule in filter_el.findall("rule"):
         rule_array = to_array(rule)
-        label = calc_rule_hash(rule_array)
+        label = _norm_id(calc_rule_hash(rule_array))
         rules.append(
             {
                 "rule_id": label,
@@ -147,6 +196,15 @@ def parse_rules(root: ET.Element) -> list[dict]:
                 "enabled": _text(rule, "disabled") != "1",
             }
         )
+    return rules
+
+
+def parse_rules(root: ET.Element) -> list[dict]:
+    """Return all firewall rules (modern MVC model + legacy fallback)."""
+    rules = _new_model_rules(root)
+    legacy = _legacy_rules(root)
+    known = {rule["rule_id"] for rule in rules}
+    rules.extend(rule for rule in legacy if rule["rule_id"] not in known)
     return rules
 
 
