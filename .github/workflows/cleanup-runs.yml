@@ -1,6 +1,8 @@
 name: Cleanup old workflow runs
 
 on:
+  push:
+    branches: [main]
   schedule:
     # Every day at 03:00 UTC
     - cron: "0 3 * * *"
@@ -8,6 +10,10 @@ on:
 
 permissions:
   actions: write
+
+concurrency:
+  group: cleanup-runs
+  cancel-in-progress: false
 
 jobs:
   cleanup:
