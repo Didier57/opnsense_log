@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 from ..storage.database import Database, get_database
 from .config_loader import parse_config, parse_rules_debug
+from .dhcp import fetch_script as dhcp_fetch_script, parse_dhcp_leases
 from .settings_store import get_opnsense_settings
 from .ssh import OPNsenseSSH, SSHError
 
@@ -40,6 +41,10 @@ class OPNSenseSync:
     def fetch_rules_debug(self) -> str:
         """Fetch the generated pf ruleset (contains labels + descriptions)."""
         return self.ssh.run(f"cat {RULES_DEBUG_PATH}")
+
+    def fetch_dhcp_leases(self) -> str:
+        """Fetch the DHCP lease files (ISC dhcpd and/or Kea)."""
+        return self.ssh.run(dhcp_fetch_script())
 
     def sync(self) -> dict:
         """Fetch config over SSH and persist interfaces and rules.
@@ -86,19 +91,34 @@ class OPNSenseSync:
         except Exception:  # noqa: BLE001
             logger.exception("Failed to parse %s", RULES_DEBUG_PATH)
 
+        # DHCP leases give local hostnames (reverse DNS usually cannot resolve
+        # private addresses). Best-effort: missing files are simply ignored.
+        leases: list[dict] = []
+        try:
+            leases = parse_dhcp_leases(self.fetch_dhcp_leases())
+        except SSHError as exc:
+            logger.warning("Could not fetch DHCP leases: %s", exc)
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to parse DHCP leases")
+
         now = datetime.now(timezone.utc)
         try:
             self._store_interfaces(interfaces, now)
             self._store_rules(rules, now)
+            self._store_leases(leases, now)
         except Exception as exc:  # noqa: BLE001
             logger.exception("Failed to store OPNsense config")
             return {"ok": False, "error": f"storage error: {exc}"}
 
-        logger.info("%s interfaces loaded, %s firewall rules loaded", len(interfaces), len(rules))
+        logger.info(
+            "%s interfaces loaded, %s firewall rules loaded, %s DHCP leases loaded",
+            len(interfaces), len(rules), len(leases),
+        )
         return {
             "ok": True,
             "interfaces": len(interfaces),
             "rules": len(rules),
+            "leases": len(leases),
             "synced_at": now.isoformat(),
         }
 
@@ -166,3 +186,17 @@ class OPNSenseSync:
                         rule["action"], json.dumps(rule),
                     ],
                 )
+
+    def _store_leases(self, leases: list[dict], now: datetime) -> None:
+        """Replace the DHCP lease snapshot (used for local hostname lookups)."""
+        self.db.execute_write("DELETE FROM dhcp_leases")
+        if not leases:
+            return
+        self.db.executemany_write(
+            'INSERT INTO dhcp_leases ("ip", "hostname", "mac", "source", "updated_at") '
+            "VALUES (?, ?, ?, ?, ?)",
+            [
+                [lease["ip"], lease["hostname"], lease.get("mac", ""), lease.get("source", ""), now]
+                for lease in leases
+            ],
+        )

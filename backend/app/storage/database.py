@@ -126,6 +126,14 @@ CREATE TABLE IF NOT EXISTS hostname_cache (
     "updated_at" TIMESTAMPTZ
 );
 
+CREATE TABLE IF NOT EXISTS dhcp_leases (
+    "ip"         VARCHAR PRIMARY KEY,
+    "hostname"   VARCHAR,
+    "mac"        VARCHAR,
+    "source"     VARCHAR,
+    "updated_at" TIMESTAMPTZ
+);
+
 CREATE TABLE IF NOT EXISTS alerts (
     "id"         VARCHAR PRIMARY KEY,
     "created_at" TIMESTAMPTZ,

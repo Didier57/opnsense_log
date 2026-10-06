@@ -42,6 +42,21 @@ class HostnameResolver:
             minutes = 1440
         return max(minutes, 1) * 60
 
+    def _dhcp_lookup(self, ips: list[str]) -> dict[str, str]:
+        """Hostnames learned from the firewall's DHCP leases (via SSH sync)."""
+        if not ips:
+            return {}
+        placeholders = ", ".join("?" for _ in ips)
+        try:
+            rows = get_database().execute_read(
+                f'SELECT "ip", "hostname" FROM dhcp_leases '
+                f'WHERE "ip" IN ({placeholders}) AND "hostname" IS NOT NULL',
+                list(ips),
+            ).fetchall()
+        except Exception:  # noqa: BLE001
+            return {}
+        return {ip: hostname for ip, hostname in rows if hostname}
+
     def _db_lookup(self, ips: list[str]) -> dict[str, str]:
         if not ips:
             return {}
@@ -117,11 +132,15 @@ class HostnameResolver:
             return result
 
         ttl = self._ttl()
+        dhcp_hits = self._dhcp_lookup(missing)
         db_hits = self._db_lookup(missing)
         to_resolve: list[str] = []
         with self._lock:
             for ip in missing:
-                if ip in db_hits:
+                if ip in dhcp_hits:
+                    result[ip] = dhcp_hits[ip]
+                    self._mem[ip] = _Entry(dhcp_hits[ip], now + ttl)
+                elif ip in db_hits:
                     result[ip] = db_hits[ip]
                     self._mem[ip] = _Entry(db_hits[ip], now + ttl)
                 else:
