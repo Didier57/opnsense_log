@@ -6,6 +6,7 @@ import { QuickFilters } from "../../components/Filters/QuickFilters";
 import { AdvancedFilters } from "../../components/Filters/AdvancedFilters";
 import { TimeRangePicker } from "../../components/TimeRangePicker";
 import { useInterfaceMap } from "../../hooks/useInterfaceMap";
+import { useRuleMap } from "../../hooks/useRuleMap";
 import { formatNumber } from "../../format";
 import type { FirewallEvent, SearchClause, SearchResult } from "../../types";
 
@@ -21,6 +22,7 @@ export function Historical() {
   const [selected, setSelected] = useState<FirewallEvent | null>(null);
   const [filterName, setFilterName] = useState("");
   const interfaceMap = useInterfaceMap();
+  const ruleMap = useRuleMap();
 
   const run = async (nextOffset = 0, overrideClauses = clauses, overrideLogic = logic) => {
     setLoading(true);
@@ -111,7 +113,7 @@ export function Historical() {
         <p className="muted">
           Showing {result ? formatNumber(result.events.length) : 0} of {formatNumber(total)} events
         </p>
-        <LogTable events={result?.events ?? []} onSelect={setSelected} interfaceMap={interfaceMap} />
+        <LogTable events={result?.events ?? []} onSelect={setSelected} interfaceMap={interfaceMap} ruleMap={ruleMap} />
         <div className="filters" style={{ marginTop: 12 }}>
           <button onClick={() => run(0)} disabled={offset === 0}>
             First
