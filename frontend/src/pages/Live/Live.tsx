@@ -4,7 +4,6 @@ import { LogTable } from "../../components/LogTable/LogTable";
 import { EventDetails } from "../../components/EventDetails/EventDetails";
 import { QuickFilters, QUICK_FILTERS } from "../../components/Filters/QuickFilters";
 import { AdvancedFilters } from "../../components/Filters/AdvancedFilters";
-import { TimeRangePicker } from "../../components/TimeRangePicker";
 import { useInterfaceMap } from "../../hooks/useInterfaceMap";
 import { useInterfaces, findInterfaceDevice } from "../../hooks/useInterfaces";
 import { useRuleMap } from "../../hooks/useRuleMap";
@@ -20,7 +19,6 @@ export function Live() {
   const [limit, setLimit] = useState(1000);
   const [clauses, setClauses] = useState<SearchClause[]>([]);
   const [logic, setLogic] = useState("AND");
-  const [range, setRange] = useState<{ start?: string; end?: string }>({});
   const [selected, setSelected] = useState<FirewallEvent | null>(null);
 
   const pausedRef = useRef(paused);
@@ -57,13 +55,12 @@ export function Live() {
   }, []);
 
   const events = useMemo(
-    () => raw.filter((event) => eventMatches(event, clauses, logic, range.start, range.end)),
-    [raw, clauses, logic, range],
+    () => raw.filter((event) => eventMatches(event, clauses, logic)),
+    [raw, clauses, logic],
   );
 
   const clearAll = () => {
     setClauses([]);
-    setRange({});
   };
 
   return (
@@ -91,7 +88,6 @@ export function Live() {
         </div>
       </div>
 
-      <TimeRangePicker onApply={(start, end) => setRange({ start, end })} />
       <QuickFilters active={clauses} onChange={setClauses} quickList={quickList} />
       <AdvancedFilters
         clauses={clauses}
