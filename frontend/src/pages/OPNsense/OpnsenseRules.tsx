@@ -19,36 +19,44 @@ export function OpnsenseRules() {
         <SyncButton onDone={load} />
       </div>
       <div className="panel">
-        <table className="log-table">
-          <thead>
-            <tr>
-              <th>ID de règle</th>
-              <th>Description</th>
-              <th>Interface</th>
-              <th>Action</th>
-              <th>Sens</th>
-              <th>Protocole</th>
-              <th>Source</th>
-              <th>Destination</th>
-              <th>Activée</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((rule) => (
-              <tr key={rule.rule_id} onClick={() => setSelected(rule)}>
-                <td className="mono">{rule.rule_id}</td>
-                <td>{rule.description}</td>
-                <td>{rule.interface}</td>
-                <td>{rule.action}</td>
-                <td>{rule.direction}</td>
-                <td>{rule.protocol}</td>
-                <td className="mono">{rule.source}</td>
-                <td className="mono">{rule.destination}</td>
-                <td>{rule.enabled ? "oui" : "non"}</td>
+        <div className="table-scroll">
+          <table className="log-table">
+            <thead>
+              <tr>
+                <th>ID de règle</th>
+                <th>Description</th>
+                <th>Interface</th>
+                <th>Action</th>
+                <th>Sens</th>
+                <th>Protocole</th>
+                <th>Source</th>
+                <th>Destination</th>
+                <th>Activée</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((rule) => (
+                <tr key={rule.rule_id} onClick={() => setSelected(rule)}>
+                  <td className="mono">{rule.rule_id}</td>
+                  <td className="desc-cell" title={rule.description}>
+                    {rule.description}
+                  </td>
+                  <td>{rule.interface}</td>
+                  <td>{rule.action}</td>
+                  <td>{rule.direction}</td>
+                  <td>{rule.protocol}</td>
+                  <td className="mono wrap-cell" title={rule.source}>
+                    {rule.source}
+                  </td>
+                  <td className="mono wrap-cell" title={rule.destination}>
+                    {rule.destination}
+                  </td>
+                  <td>{rule.enabled ? "oui" : "non"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {items.length === 0 && <p className="muted">Aucune règle. Configurez le SSH et synchronisez.</p>}
       </div>
       {selected && (
