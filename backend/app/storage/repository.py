@@ -73,6 +73,16 @@ class EventRepository:
     def count(self) -> int:
         return self.db.execute_read("SELECT COUNT(*) FROM events").fetchone()[0]
 
+    def recent(self, limit: int = 200) -> list[dict]:
+        """Most recent events (newest first), used to prime the live view."""
+        limit = max(1, min(limit, 5000))
+        rows = self.db.execute_read(
+            f"SELECT {_QUOTED_COLS} FROM events "
+            f'ORDER BY "event_time" DESC LIMIT ?',
+            [limit],
+        ).fetchall()
+        return [dict(zip(_EVENT_COLUMNS, row)) for row in rows]
+
     # ---------------------------------------------------------------- search
     @staticmethod
     def _build_clause(clause: dict) -> tuple[str, list]:

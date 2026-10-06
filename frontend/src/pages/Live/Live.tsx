@@ -23,6 +23,7 @@ export function Live() {
 
   const pausedRef = useRef(paused);
   const limitRef = useRef(limit);
+  const pendingRef = useRef<FirewallEvent[]>([]);
   const interfaceMap = useInterfaceMap();
   const interfaces = useInterfaces();
   const ruleMap = useRuleMap();
@@ -39,19 +40,53 @@ export function Live() {
   ];
 
   useEffect(() => {
-    const socket = new WebSocket(liveSocketUrl());
-    socket.onopen = () => setConnected(true);
-    socket.onclose = () => setConnected(false);
-    socket.onerror = () => setConnected(false);
-    socket.onmessage = (message) => {
-      if (pausedRef.current) return;
-      const event = JSON.parse(message.data) as FirewallEvent;
+    let socket: WebSocket | null = null;
+    let closed = false;
+    let retry = 0;
+    let reconnectTimer: number | null = null;
+
+    const connect = () => {
+      socket = new WebSocket(liveSocketUrl());
+      socket.onopen = () => {
+        setConnected(true);
+        retry = 0;
+      };
+      socket.onmessage = (message) => {
+        if (pausedRef.current) return;
+        try {
+          pendingRef.current.push(JSON.parse(message.data) as FirewallEvent);
+        } catch {
+          /* ignore malformed frames */
+        }
+      };
+      socket.onerror = () => socket?.close();
+      socket.onclose = () => {
+        setConnected(false);
+        if (closed) return;
+        retry = Math.min(retry + 1, 6);
+        reconnectTimer = window.setTimeout(connect, Math.min(15000, 500 * 2 ** retry));
+      };
+    };
+    connect();
+
+    // Coalesce incoming events and flush at a fixed pace so a burst of logs
+    // cannot saturate the UI.
+    const flushTimer = window.setInterval(() => {
+      if (pendingRef.current.length === 0) return;
+      const batch = pendingRef.current.reverse();
+      pendingRef.current = [];
       setRaw((prev) => {
-        const next = [event, ...prev];
+        const next = [...batch, ...prev];
         return next.length > limitRef.current ? next.slice(0, limitRef.current) : next;
       });
+    }, 200);
+
+    return () => {
+      closed = true;
+      window.clearInterval(flushTimer);
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      socket?.close();
     };
-    return () => socket.close();
   }, []);
 
   const events = useMemo(
