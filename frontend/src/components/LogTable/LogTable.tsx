@@ -9,9 +9,7 @@ interface Props {
 }
 
 function interfaceLabel(event: FirewallEvent, interfaceMap: Record<string, string>): string {
-  const description = interfaceMap[event.interface];
-  if (!description || description === event.interface) return event.interface;
-  return `${description} (${event.interface})`;
+  return interfaceMap[event.interface] || event.interface;
 }
 
 export function LogTable({ events, onSelect, interfaceMap = {}, ruleMap = {} }: Props) {

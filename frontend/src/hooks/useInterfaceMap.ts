@@ -9,7 +9,9 @@ export function useInterfaceMap(): Record<string, string> {
       .then((res) => {
         const next: Record<string, string> = {};
         res.items.forEach((iface) => {
-          if (iface.device) next[iface.device] = iface.description || iface.name;
+          const label = iface.description || iface.name;
+          if (iface.device) next[iface.device] = label;
+          if (iface.name) next[iface.name] = label;
         });
         setMap(next);
       })
