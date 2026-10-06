@@ -8,7 +8,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from .api import api_router
 from .config import settings
@@ -80,8 +80,24 @@ app.include_router(api_router)
 
 # Serve the built frontend when present (production container).
 _static_dir = Path(__file__).resolve().parent.parent / "static"
-if _static_dir.is_dir():
-    app.mount("/", StaticFiles(directory=str(_static_dir), html=True), name="static")
+_index_file = _static_dir / "index.html"
+
+if _index_file.is_file():
+    _static_root = _static_dir.resolve()
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str) -> Response:
+        """Serve static files, falling back to index.html for client routes.
+
+        This lets the React single-page app handle deep links (e.g. /dashboard)
+        when the page is refreshed, without breaking API 404 semantics.
+        """
+        if full_path.startswith("api/"):
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        candidate = (_static_root / full_path).resolve()
+        if full_path and (candidate == _static_root or _static_root in candidate.parents) and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(_index_file)
 
 
 def run() -> None:
