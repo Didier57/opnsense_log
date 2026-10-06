@@ -72,7 +72,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   onClick={() => toggle(section.group)}
                   aria-expanded={Boolean(open[section.group])}
                 >
-                  <span className={`nav-caret${open[section.group] ? " open" : ""}`}>▸</span>
+                  <span className="nav-caret">{open[section.group] ? "▲" : "▼"}</span>
                   {section.group}
                 </button>
                 {open[section.group] &&

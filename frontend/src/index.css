@@ -5,6 +5,7 @@
   --border: #2a3644;
   --text: #e6edf3;
   --text-dim: #93a4b5;
+  --nav-title: #7dd3fc;
   --accent: #3b82f6;
   --pass: #2ea043;
   --block: #d9534f;
@@ -62,7 +63,7 @@ input, select {
   margin: 0;
   border-bottom: 1px solid var(--border);
 }
-.nav-group { padding: 10px 16px 4px; color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+.nav-group { padding: 10px 16px 4px; color: var(--nav-title); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
 button.nav-group-toggle {
   display: flex;
   align-items: center;
@@ -75,8 +76,7 @@ button.nav-group-toggle {
   font-family: inherit;
 }
 button.nav-group-toggle:hover { color: var(--text); }
-.nav-caret { display: inline-block; transition: transform 0.15s ease; font-size: 10px; }
-.nav-caret.open { transform: rotate(90deg); }
+.nav-caret { display: inline-block; width: 12px; text-align: center; font-size: 9px; color: var(--nav-title); }
 .sidebar a.nav-link {
   display: block;
   padding: 7px 16px;
