@@ -50,6 +50,8 @@ class OPNsenseSSH:
                     username=self.username,
                     pkey=pkey,
                     timeout=self.timeout,
+                    banner_timeout=self.timeout,
+                    auth_timeout=self.timeout,
                     allow_agent=False,
                     look_for_keys=False,
                 )
@@ -60,6 +62,8 @@ class OPNsenseSSH:
                     username=self.username,
                     password=self.password,
                     timeout=self.timeout,
+                    banner_timeout=self.timeout,
+                    auth_timeout=self.timeout,
                     allow_agent=False,
                     look_for_keys=False,
                 )

@@ -44,21 +44,37 @@ class OPNSenseSync:
         """
         if not self.ssh.host:
             return {"ok": False, "error": "OPNsense host not configured"}
+
+        logger.info(
+            "OPNsense sync started (%s@%s:%s, auth=%s)",
+            self.ssh.username,
+            self.ssh.host,
+            self.ssh.port,
+            self.ssh.auth_type,
+        )
         try:
             contents = self.fetch_config()
         except SSHError as exc:
             logger.warning("OPNsense sync failed: %s", exc)
             return {"ok": False, "error": str(exc)}
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("OPNsense sync unexpected error")
+            return {"ok": False, "error": f"unexpected error: {exc}"}
 
         try:
             interfaces, rules = parse_config(contents)
-        except ET.ParseError as exc:  # noqa: F821
+        except ET.ParseError as exc:
             logger.error("Failed to parse OPNsense config: %s", exc)
             return {"ok": False, "error": f"config parse error: {exc}"}
 
         now = datetime.now(timezone.utc)
-        self._store_interfaces(interfaces, now)
-        self._store_rules(rules, now)
+        try:
+            self._store_interfaces(interfaces, now)
+            self._store_rules(rules, now)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Failed to store OPNsense config")
+            return {"ok": False, "error": f"storage error: {exc}"}
+
         logger.info("%s interfaces loaded, %s firewall rules loaded", len(interfaces), len(rules))
         return {
             "ok": True,
