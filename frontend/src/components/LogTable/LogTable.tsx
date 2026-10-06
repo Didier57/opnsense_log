@@ -12,9 +12,16 @@ function interfaceLabel(event: FirewallEvent, interfaceMap: Record<string, strin
   return interfaceMap[event.interface] || event.interface;
 }
 
+function directionLabel(direction: string): string {
+  const value = (direction || "").toLowerCase();
+  if (value === "in") return "Entrée";
+  if (value === "out") return "Sortie";
+  return direction ? direction[0].toUpperCase() + direction.slice(1) : "—";
+}
+
 export function LogTable({ events, onSelect, interfaceMap = {}, ruleMap = {} }: Props) {
   if (events.length === 0) {
-    return <p className="muted">No events.</p>;
+    return <p className="muted">Aucun événement.</p>;
   }
   return (
     <div className="table-scroll">
@@ -22,9 +29,9 @@ export function LogTable({ events, onSelect, interfaceMap = {}, ruleMap = {} }: 
         <thead>
           <tr>
             <th>Interface</th>
-            <th>In/Out</th>
+            <th>Sens</th>
             <th>Date-Heure</th>
-            <th>Protocol</th>
+            <th>Protocole</th>
             <th>Source</th>
             <th>Destination</th>
             <th>Action</th>
@@ -38,9 +45,7 @@ export function LogTable({ events, onSelect, interfaceMap = {}, ruleMap = {} }: 
                 <span className="truncate">{interfaceLabel(event, interfaceMap)}</span>
               </td>
               <td>
-                <span className="badge other">
-                  {event.direction ? event.direction[0].toUpperCase() + event.direction.slice(1) : "—"}
-                </span>
+                <span className="badge other">{directionLabel(event.direction)}</span>
               </td>
               <td className="mono">{formatTime(event.event_time)}</td>
               <td>{event.protocol}</td>

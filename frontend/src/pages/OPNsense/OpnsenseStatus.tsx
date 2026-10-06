@@ -22,7 +22,7 @@ export function OpnsenseStatus() {
   return (
     <>
       <div className="topbar">
-        <h2>OPNsense status</h2>
+        <h2>État OPNsense</h2>
         <SyncButton onDone={load} />
       </div>
       <div className="panel">
@@ -33,15 +33,15 @@ export function OpnsenseStatus() {
               <span className={`status-dot ${status.opnsense?.connected ? "ok" : "bad"}`} />
               OPNsense{" "}
               {status.opnsense?.connected
-                ? "connected"
+                ? "connecté"
                 : status.opnsense?.configured
-                  ? "unreachable"
-                  : "not configured"}
+                  ? "injoignable"
+                  : "non configuré"}
               {status.opnsense?.error ? ` — ${status.opnsense.error}` : ""}
             </li>
             <li>
-              <span className={`status-dot ${status.database?.ok ? "ok" : "bad"}`} /> Database{" "}
-              {status.database?.ok ? "OK" : "error"}
+              <span className={`status-dot ${status.database?.ok ? "ok" : "bad"}`} /> Base de données{" "}
+              {status.database?.ok ? "OK" : "erreur"}
             </li>
             <li>
               <span className="status-dot ok" /> Syslog {status.syslog?.protocol} :
@@ -49,11 +49,11 @@ export function OpnsenseStatus() {
             </li>
             <li>
               <span className={`status-dot ${status.websocket?.running ? "ok" : "bad"}`} /> WebSocket (
-              {status.websocket?.subscribers ?? 0} subscribers)
+              {status.websocket?.subscribers ?? 0} abonnés)
             </li>
           </ul>
         ) : (
-          !error && <p className="muted">Loading…</p>
+          !error && <p className="muted">Chargement…</p>
         )}
       </div>
     </>

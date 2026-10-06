@@ -37,15 +37,15 @@ export function SyncButton({ onDone }: { onDone?: () => void }) {
       const result = (await api.syncRules()) as SyncResult;
       if (result.ok) {
         setOk(true);
-        setMessage(`Synchronised: ${result.interfaces ?? 0} interfaces, ${result.rules ?? 0} rules`);
+        setMessage(`Synchronisé : ${result.interfaces ?? 0} interfaces, ${result.rules ?? 0} règles`);
       } else {
         setOk(false);
-        setMessage(`Failed: ${result.error ?? "unknown error"}`);
+        setMessage(`Échec : ${result.error ?? "erreur inconnue"}`);
       }
       onDone?.();
     } catch (err) {
       setOk(false);
-      setMessage(`Failed: ${String(err)}`);
+      setMessage(`Échec : ${String(err)}`);
     } finally {
       setBusy(false);
     }
@@ -54,7 +54,7 @@ export function SyncButton({ onDone }: { onDone?: () => void }) {
   return (
     <>
       <button className="active" onClick={run} disabled={busy}>
-        {busy ? `Synchronising… ${elapsed}s` : "Synchronise"}
+        {busy ? `Synchronisation… ${elapsed}s` : "Synchroniser"}
       </button>
       {message && (
         <span className={ok ? "muted" : "error"} style={{ fontSize: 13 }}>

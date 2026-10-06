@@ -3,42 +3,42 @@ import type { ReactNode } from "react";
 import { useAuth } from "../auth";
 
 const NAV: { group: string; links: { to: string; label: string }[] }[] = [
-  { group: "", links: [{ to: "/", label: "Dashboard" }] },
+  { group: "", links: [{ to: "/", label: "Tableau de bord" }] },
   {
-    group: "Logs",
+    group: "Journaux",
     links: [
-      { to: "/live", label: "Live" },
-      { to: "/historical", label: "Historical" },
-      { to: "/saved-filters", label: "Saved Filters" },
+      { to: "/live", label: "Temps réel" },
+      { to: "/historical", label: "Historique" },
+      { to: "/saved-filters", label: "Filtres enregistrés" },
     ],
   },
   {
-    group: "Analysis",
+    group: "Analyse",
     links: [
-      { to: "/analysis", label: "Overview" },
+      { to: "/analysis", label: "Vue d'ensemble" },
       { to: "/analysis/sources", label: "Sources" },
       { to: "/analysis/destinations", label: "Destinations" },
       { to: "/analysis/ports", label: "Ports" },
-      { to: "/analysis/rules", label: "Rules" },
+      { to: "/analysis/rules", label: "Règles" },
       { to: "/analysis/interfaces", label: "Interfaces" },
     ],
   },
   {
     group: "OPNsense",
     links: [
-      { to: "/opnsense/status", label: "Status" },
+      { to: "/opnsense/status", label: "État" },
       { to: "/opnsense/interfaces", label: "Interfaces" },
-      { to: "/opnsense/rules", label: "Rules" },
+      { to: "/opnsense/rules", label: "Règles" },
     ],
   },
   {
-    group: "Settings",
+    group: "Paramètres",
     links: [
       { to: "/settings", label: "Application" },
       { to: "/settings/opnsense", label: "OPNsense" },
     ],
   },
-  { group: "System", links: [{ to: "/system", label: "Status" }, { to: "/system/logs", label: "Logs" }] },
+  { group: "Système", links: [{ to: "/system", label: "État" }, { to: "/system/logs", label: "Journaux" }] },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -47,7 +47,7 @@ export function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="layout">
       <aside className="sidebar">
-        <h1>OPNsense Log Analyzer</h1>
+        <h1>Analyseur de logs OPNsense</h1>
         {NAV.map((section) => (
           <div key={section.group || "root"}>
             {section.group && <div className="nav-group">{section.group}</div>}
@@ -77,7 +77,7 @@ export function Layout({ children }: { children: ReactNode }) {
                     navigate("/login");
                   }}
                 >
-                  Logout
+                   Déconnexion
                 </button>
               </>
             ) : null}

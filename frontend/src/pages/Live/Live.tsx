@@ -67,21 +67,21 @@ export function Live() {
     <>
       <div className="topbar">
         <h2>
-          Live view <span className={`status-dot ${connected ? "ok" : "bad"}`} />
+          Temps réel <span className={`status-dot ${connected ? "ok" : "bad"}`} />
           <span className="muted" style={{ fontSize: 13 }}>
-            {connected ? "connected" : "disconnected"}
+            {connected ? "connecté" : "déconnecté"}
           </span>
         </h2>
         <div className="filters">
           <button onClick={() => setPaused((p) => !p)} className={paused ? "active" : ""}>
-            {paused ? "Resume" : "Pause"}
+            {paused ? "Reprendre" : "Pause"}
           </button>
-          <button onClick={() => setRaw([])}>Clear</button>
-          <button onClick={clearAll}>Reset filters</button>
+          <button onClick={() => setRaw([])}>Vider</button>
+          <button onClick={clearAll}>Réinitialiser les filtres</button>
           <select value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
             {LIMITS.map((l) => (
               <option key={l} value={l}>
-                last {l}
+                derniers {l}
               </option>
             ))}
           </select>
@@ -98,7 +98,7 @@ export function Live() {
 
       <div className="panel">
         <p className="muted">
-          {events.length} events shown of {raw.length} buffered
+          {events.length} événements affichés sur {raw.length} en mémoire
         </p>
         <LogTable
           events={events}

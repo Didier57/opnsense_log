@@ -2,13 +2,13 @@ import { useEffect, useState } from "react";
 import { api } from "../../api/client";
 
 const FIELDS: { key: string; label: string; type?: string }[] = [
-  { key: "opnsense_host", label: "Host" },
-  { key: "opnsense_ssh_port", label: "SSH port", type: "number" },
-  { key: "opnsense_username", label: "Username" },
-  { key: "opnsense_auth_type", label: "Auth type (password / key)" },
-  { key: "opnsense_password", label: "Password (leave empty to keep current)", type: "password" },
-  { key: "opnsense_key_path", label: "Private key path" },
-  { key: "opnsense_sync_interval_min", label: "Sync interval (min)", type: "number" },
+  { key: "opnsense_host", label: "Hôte" },
+  { key: "opnsense_ssh_port", label: "Port SSH", type: "number" },
+  { key: "opnsense_username", label: "Nom d'utilisateur" },
+  { key: "opnsense_auth_type", label: "Type d'authentification (password / key)" },
+  { key: "opnsense_password", label: "Mot de passe (laisser vide pour conserver l'actuel)", type: "password" },
+  { key: "opnsense_key_path", label: "Chemin de la clé privée" },
+  { key: "opnsense_sync_interval_min", label: "Intervalle de synchronisation (min)", type: "number" },
 ];
 
 export function OpnsenseSettings() {
@@ -45,7 +45,7 @@ export function OpnsenseSettings() {
       // Never overwrite a stored password with an empty field.
       if (!payload.opnsense_password) delete payload.opnsense_password;
       await api.updateOpnsense(payload);
-      setMessage("Saved.");
+      setMessage("Enregistré.");
       load();
     } catch (e) {
       setError(String(e));
@@ -60,7 +60,7 @@ export function OpnsenseSettings() {
     setBusy(true);
     try {
       const result = await api.testOpnsense();
-      setMessage(result.message || (result.ok ? "Connection OK" : "Connection failed"));
+      setMessage(result.message || (result.ok ? "Connexion réussie" : "Échec de la connexion"));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -71,13 +71,13 @@ export function OpnsenseSettings() {
   return (
     <>
       <div className="topbar">
-        <h2>OPNsense connection</h2>
+        <h2>Connexion OPNsense</h2>
         <div className="filters">
           <button onClick={test} disabled={busy}>
-            Test connection
+            Tester la connexion
           </button>
           <button className="active" onClick={save} disabled={busy}>
-            {busy ? "…" : "Save"}
+            {busy ? "…" : "Enregistrer"}
           </button>
         </div>
       </div>
@@ -88,7 +88,7 @@ export function OpnsenseSettings() {
             checked={Boolean(form.opnsense_sync_enabled)}
             onChange={(e) => setForm({ ...form, opnsense_sync_enabled: e.target.checked })}
           />
-          Enable automatic synchronisation
+          Activer la synchronisation automatique
         </label>
         {message && <p className="muted">{message}</p>}
         {error && <p className="error">{error}</p>}
@@ -96,7 +96,7 @@ export function OpnsenseSettings() {
           <div key={field.key} style={{ marginBottom: 10 }}>
             <label className="muted" style={{ display: "block", marginBottom: 4 }}>
               {field.label}
-              {field.key === "opnsense_password" && hasPassword ? " (a password is stored)" : ""}
+              {field.key === "opnsense_password" && hasPassword ? " (un mot de passe est enregistré)" : ""}
             </label>
             <input
               type={field.type || "text"}
@@ -116,8 +116,8 @@ export function OpnsenseSettings() {
           </div>
         ))}
         <p className="muted">
-          Prefer SSH key authentication. Settings are stored server-side (data volume) and
-          override any defaults from environment variables. Private keys are never written to logs.
+          Préférez l'authentification par clé SSH. Les paramètres sont stockés côté serveur (volume de données) et
+          remplacent les valeurs par défaut des variables d'environnement. Les clés privées ne sont jamais écrites dans les journaux.
         </p>
       </div>
     </>

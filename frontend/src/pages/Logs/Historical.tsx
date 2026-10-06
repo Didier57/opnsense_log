@@ -73,7 +73,7 @@ export function Historical() {
   return (
     <>
       <div className="topbar">
-        <h2>Historical search</h2>
+        <h2>Recherche historique</h2>
       </div>
       <TimeRangePicker
         onApply={(start, end) => {
@@ -93,17 +93,17 @@ export function Historical() {
       />
       <div className="panel filters">
         <button className="active" onClick={() => run(0)} disabled={loading}>
-          {loading ? "Searching…" : "Search"}
+          {loading ? "Recherche…" : "Rechercher"}
         </button>
         <input
-          placeholder="Save filter as…"
+          placeholder="Enregistrer le filtre sous…"
           value={filterName}
           onChange={(e) => setFilterName(e.target.value)}
         />
         <button onClick={saveCurrentFilter} disabled={!filterName.trim()}>
-          Save filter
+          Enregistrer le filtre
         </button>
-        <span className="muted">Export:</span>
+        <span className="muted">Export :</span>
         <button onClick={() => exportResults("csv")}>CSV</button>
         <button onClick={() => exportResults("json")}>JSON</button>
         <button onClick={() => exportResults("parquet")}>Parquet</button>
@@ -111,24 +111,24 @@ export function Historical() {
 
       <div className="panel">
         <p className="muted">
-          Showing {result ? formatNumber(result.events.length) : 0} of {formatNumber(total)} events
+          Affichage de {result ? formatNumber(result.events.length) : 0} sur {formatNumber(total)} événements
         </p>
         <LogTable events={result?.events ?? []} onSelect={setSelected} interfaceMap={interfaceMap} ruleMap={ruleMap} />
         <div className="filters" style={{ marginTop: 12 }}>
           <button onClick={() => run(0)} disabled={offset === 0}>
-            First
+            Premier
           </button>
           <button onClick={() => run(Math.max(0, offset - PAGE_SIZE))} disabled={offset === 0}>
-            Previous
+            Précédent
           </button>
           <span className="muted">
             Page {currentPage} / {pages}
           </span>
           <button onClick={() => run(offset + PAGE_SIZE)} disabled={offset + PAGE_SIZE >= total}>
-            Next
+            Suivant
           </button>
           <button onClick={() => run((pages - 1) * PAGE_SIZE)} disabled={offset + PAGE_SIZE >= total}>
-            Last
+            Dernier
           </button>
         </div>
       </div>

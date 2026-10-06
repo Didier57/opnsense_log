@@ -6,7 +6,7 @@ interface Point {
 
 export function LineChart({ points, height = 160 }: { points: Point[]; height?: number }) {
   if (points.length === 0) {
-    return <p className="muted">No data.</p>;
+    return <p className="muted">Aucune donnée.</p>;
   }
   const width = 760;
   const max = Math.max(1, ...points.map((p) => p.total));
@@ -29,7 +29,7 @@ export function LineChart({ points, height = 160 }: { points: Point[]; height?: 
       </svg>
       <div className="muted" style={{ fontSize: 12 }}>
         <span style={{ color: "#3b82f6" }}>● total</span>{" "}
-        <span style={{ color: "#d9534f" }}>● blocked</span> ({points.length} points)
+        <span style={{ color: "#d9534f" }}>● bloqués</span> ({points.length} points)
       </div>
     </div>
   );

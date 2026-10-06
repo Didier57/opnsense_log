@@ -8,11 +8,11 @@ import { formatNumber } from "../../format";
 import type { Summary, TopItem } from "../../types";
 
 const DIMENSIONS: Record<string, { dimension: string; title: string }> = {
-  sources: { dimension: "src_ip", title: "Top sources" },
-  destinations: { dimension: "dst_ip", title: "Top destinations" },
-  ports: { dimension: "dst_port", title: "Top destination ports" },
-  rules: { dimension: "rule_id", title: "Top rules" },
-  interfaces: { dimension: "interface", title: "Traffic per interface" },
+  sources: { dimension: "src_ip", title: "Principales sources" },
+  destinations: { dimension: "dst_ip", title: "Principales destinations" },
+  ports: { dimension: "dst_port", title: "Principaux ports de destination" },
+  rules: { dimension: "rule_id", title: "Principales règles" },
+  interfaces: { dimension: "interface", title: "Trafic par interface" },
 };
 
 export function Analysis() {
@@ -39,13 +39,13 @@ export function Analysis() {
 
   const detail = kind ? DIMENSIONS[kind] : undefined;
   if (kind && !detail) {
-    return <p className="error">Unknown analysis view.</p>;
+    return <p className="error">Vue d'analyse inconnue.</p>;
   }
 
   return (
     <>
       <div className="topbar">
-        <h2>{detail ? detail.title : "Analysis overview"}</h2>
+        <h2>{detail ? detail.title : "Vue d'ensemble de l'analyse"}</h2>
       </div>
       <TimeRangePicker
         onApply={(start, end) => {
@@ -55,10 +55,10 @@ export function Analysis() {
       />
       {!detail && (
         <div className="cards">
-          <StatCard label="Events" value={summary?.total ?? 0} />
-          <StatCard label="Blocked" value={summary?.blocked ?? 0} />
-          <StatCard label="Passed" value={summary?.passed ?? 0} />
-          <StatCard label="Unique sources" value={summary?.sources ?? 0} />
+          <StatCard label="Événements" value={summary?.total ?? 0} />
+          <StatCard label="Bloqués" value={summary?.blocked ?? 0} />
+          <StatCard label="Autorisés" value={summary?.passed ?? 0} />
+          <StatCard label="Sources uniques" value={summary?.sources ?? 0} />
         </div>
       )}
       {summary && summary.total > 0 && (
@@ -71,12 +71,12 @@ export function Analysis() {
         <BarList items={items} />
       ) : (
         <div className="grid-2">
-          <BarList title="Protocols" items={byProtocol} />
+          <BarList title="Protocoles" items={byProtocol} />
           <BarList title="Actions" items={byAction} />
         </div>
       )}
       {summary && (
-        <p className="muted">Total events: {formatNumber(summary.total)}</p>
+        <p className="muted">Total des événements : {formatNumber(summary.total)}</p>
       )}
     </>
   );

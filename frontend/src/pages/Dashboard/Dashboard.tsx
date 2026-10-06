@@ -23,22 +23,22 @@ export function Dashboard() {
   return (
     <>
       <div className="topbar">
-        <h2>Dashboard</h2>
+        <h2>Tableau de bord</h2>
       </div>
       <div className="cards">
-        <StatCard label="Events" value={summary?.total ?? 0} />
-        <StatCard label="Blocked" value={summary?.blocked ?? 0} />
-        <StatCard label="Passed" value={summary?.passed ?? 0} />
+        <StatCard label="Événements" value={summary?.total ?? 0} />
+        <StatCard label="Bloqués" value={summary?.blocked ?? 0} />
+        <StatCard label="Autorisés" value={summary?.passed ?? 0} />
         <StatCard label="Interfaces" value={summary?.interfaces ?? 0} />
       </div>
       <div className="panel">
-        <h3 style={{ marginTop: 0 }}>Events over time</h3>
+        <h3 style={{ marginTop: 0 }}>Événements dans le temps</h3>
         <LineChart points={points} />
       </div>
       <div className="grid-3">
-        <BarList title="Top source IPs" items={topSrc} />
-        <BarList title="Top destination ports" items={topPorts} />
-        <BarList title="Top rules" items={topRules} />
+        <BarList title="Principales IP sources" items={topSrc} />
+        <BarList title="Principaux ports de destination" items={topPorts} />
+        <BarList title="Principales règles" items={topRules} />
       </div>
     </>
   );

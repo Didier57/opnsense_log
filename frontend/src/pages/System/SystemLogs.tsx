@@ -24,16 +24,16 @@ export function SystemLogs() {
   return (
     <>
       <div className="topbar">
-        <h2>System logs</h2>
-        <button onClick={load}>Refresh</button>
+        <h2>Journaux système</h2>
+        <button onClick={load}>Rafraîchir</button>
       </div>
       <div className="panel">
         <div className="table-scroll">
           <table className="log-table">
             <thead>
               <tr>
-                <th>Time</th>
-                <th>Level</th>
+                <th>Heure</th>
+                <th>Niveau</th>
                 <th>Source</th>
                 <th>Message</th>
               </tr>
@@ -52,7 +52,7 @@ export function SystemLogs() {
             </tbody>
           </table>
         </div>
-        {items.length === 0 && <p className="muted">No logs.</p>}
+        {items.length === 0 && <p className="muted">Aucun journal.</p>}
       </div>
     </>
   );

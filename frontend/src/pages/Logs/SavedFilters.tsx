@@ -16,10 +16,10 @@ export function SavedFilters() {
   return (
     <>
       <div className="topbar">
-        <h2>Saved filters</h2>
+        <h2>Filtres enregistrés</h2>
       </div>
       <div className="panel">
-        {items.length === 0 && <p className="muted">No saved filters yet.</p>}
+        {items.length === 0 && <p className="muted">Aucun filtre enregistré pour le moment.</p>}
         <div className="filters">
           {items.map((filter) => (
             <span key={filter.id} className="chip active">
@@ -44,7 +44,7 @@ export function SavedFilters() {
           ))}
         </div>
         <p className="muted">
-          Saved filters are stored server-side. Open the Historical page and apply a filter to reuse it.
+          Les filtres enregistrés sont stockés côté serveur. Ouvrez la page Historique pour en appliquer un.
         </p>
       </div>
     </>

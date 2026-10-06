@@ -25,7 +25,7 @@ export function App() {
         path="/*"
         element={
           !ready ? (
-            <div className="muted">Loading…</div>
+            <div className="muted">Chargement…</div>
           ) : authEnabled && !username ? (
             <Navigate to="/login" replace />
           ) : (

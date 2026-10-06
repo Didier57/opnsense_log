@@ -14,15 +14,15 @@ export function OpnsenseInterfaces() {
   return (
     <>
       <div className="topbar">
-        <h2>OPNsense interfaces</h2>
+        <h2>Interfaces OPNsense</h2>
         <SyncButton onDone={load} />
       </div>
       <div className="panel">
         <table className="log-table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Device</th>
+              <th>Nom</th>
+              <th>Périphérique</th>
               <th>Description</th>
               <th>IPv4</th>
               <th>IPv6</th>
@@ -42,7 +42,7 @@ export function OpnsenseInterfaces() {
             ))}
           </tbody>
         </table>
-        {items.length === 0 && <p className="muted">No interfaces. Configure SSH and synchronise.</p>}
+        {items.length === 0 && <p className="muted">Aucune interface. Configurez le SSH et synchronisez.</p>}
       </div>
     </>
   );

@@ -13,11 +13,11 @@ export function Settings() {
   return (
     <>
       <div className="topbar">
-        <h2>Application settings</h2>
+        <h2>Paramètres de l'application</h2>
       </div>
       <div className="panel">
         <p className="muted">
-          Configuration is read from environment variables. Restart the container to apply changes.
+          La configuration est lue depuis les variables d'environnement. Redémarrez le conteneur pour appliquer les changements.
         </p>
         {settings && (
           <table className="log-table">
@@ -35,9 +35,9 @@ export function Settings() {
         )}
       </div>
       <div className="panel">
-        <h3 style={{ marginTop: 0 }}>Storage</h3>
+        <h3 style={{ marginTop: 0 }}>Stockage</h3>
         <p className="muted">
-          Database engine: DuckDB. Data directory persists in the Docker volume.
+          Moteur de base de données : DuckDB. Le répertoire de données est conservé dans le volume Docker.
         </p>
         {status?.storage && <pre className="mono">{JSON.stringify(status.storage, null, 2)}</pre>}
       </div>

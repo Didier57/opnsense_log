@@ -8,22 +8,22 @@ interface Props {
 }
 
 const FIELDS: [keyof FirewallEvent, string][] = [
-  ["rule_id", "Rule ID"],
+  ["rule_id", "ID de règle"],
   ["interface", "Interface"],
-  ["reason", "Reason"],
+  ["reason", "Raison"],
   ["action", "Action"],
-  ["direction", "Direction"],
-  ["ip_version", "IP version"],
-  ["protocol", "Protocol"],
-  ["src_ip", "Source IP"],
-  ["src_port", "Source port"],
-  ["dst_ip", "Destination IP"],
-  ["dst_port", "Destination port"],
-  ["tcp_flags", "TCP flags"],
+  ["direction", "Sens"],
+  ["ip_version", "Version IP"],
+  ["protocol", "Protocole"],
+  ["src_ip", "IP source"],
+  ["src_port", "Port source"],
+  ["dst_ip", "IP destination"],
+  ["dst_port", "Port destination"],
+  ["tcp_flags", "Drapeaux TCP"],
   ["options", "Options"],
-  ["length", "Length"],
-  ["hostname", "Host"],
-  ["parse_status", "Parse status"],
+  ["length", "Longueur"],
+  ["hostname", "Hôte"],
+  ["parse_status", "État d'analyse"],
 ];
 
 export function EventDetails({ event, onClose, ruleDescription }: Props) {
@@ -31,13 +31,13 @@ export function EventDetails({ event, onClose, ruleDescription }: Props) {
   return (
     <div className="panel">
       <div className="topbar">
-        <h3 style={{ margin: 0 }}>Event details</h3>
-        <button onClick={onClose}>Close</button>
+        <h3 style={{ margin: 0 }}>Détails de l'événement</h3>
+        <button onClick={onClose}>Fermer</button>
       </div>
       <p className="muted">{formatDateTime(event.event_time)}</p>
       {ruleDescription && (
         <p>
-          <strong>Rule:</strong> {ruleDescription}
+          <strong>Règle :</strong> {ruleDescription}
         </p>
       )}
       <table className="log-table">
@@ -53,7 +53,7 @@ export function EventDetails({ event, onClose, ruleDescription }: Props) {
         </tbody>
       </table>
       <details style={{ marginTop: 10 }}>
-        <summary className="muted">Raw line</summary>
+        <summary className="muted">Ligne brute</summary>
         <pre className="mono" style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
           {event.raw}
         </pre>

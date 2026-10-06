@@ -1,16 +1,16 @@
 import type { SearchClause } from "../../types";
 
 export const QUICK_FILTERS: { label: string; clause: SearchClause }[] = [
-  { label: "Pass", clause: { field: "action", op: "eq", value: "pass" } },
-  { label: "Block", clause: { field: "action", op: "eq", value: "block" } },
-  { label: "Reject", clause: { field: "action", op: "eq", value: "reject" } },
+  { label: "Autorisé", clause: { field: "action", op: "eq", value: "pass" } },
+  { label: "Bloqué", clause: { field: "action", op: "eq", value: "block" } },
+  { label: "Rejeté", clause: { field: "action", op: "eq", value: "reject" } },
   { label: "TCP", clause: { field: "protocol", op: "eq", value: "tcp" } },
   { label: "UDP", clause: { field: "protocol", op: "eq", value: "udp" } },
   { label: "ICMP", clause: { field: "protocol", op: "eq", value: "icmp" } },
   { label: "IPv4", clause: { field: "ip_version", op: "eq", value: 4 } },
   { label: "IPv6", clause: { field: "ip_version", op: "eq", value: 6 } },
-  { label: "Inbound", clause: { field: "direction", op: "eq", value: "in" } },
-  { label: "Outbound", clause: { field: "direction", op: "eq", value: "out" } },
+  { label: "Entrant", clause: { field: "direction", op: "eq", value: "in" } },
+  { label: "Sortant", clause: { field: "direction", op: "eq", value: "out" } },
 ];
 
 function clauseKey(clause: SearchClause): string {

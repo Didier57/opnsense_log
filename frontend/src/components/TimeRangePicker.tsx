@@ -28,10 +28,10 @@ export function TimeRangePicker({ onApply }: Props) {
     <div className="panel">
       <div className="filters">
         <label>
-          From <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
+          Du <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
         </label>
         <label>
-          To <input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} />
+          Au <input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} />
         </label>
         <button
           className="active"
@@ -39,7 +39,7 @@ export function TimeRangePicker({ onApply }: Props) {
             onApply(start ? new Date(start).toISOString() : undefined, end ? new Date(end).toISOString() : undefined)
           }
         >
-          Analyze
+          Analyser
         </button>
         <button
           onClick={() => {
@@ -47,7 +47,7 @@ export function TimeRangePicker({ onApply }: Props) {
             setEnd(defaultEnd());
           }}
         >
-          Last hour
+          Dernière heure
         </button>
       </div>
     </div>

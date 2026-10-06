@@ -15,22 +15,22 @@ export function OpnsenseRules() {
   return (
     <>
       <div className="topbar">
-        <h2>OPNsense rules</h2>
+        <h2>Règles OPNsense</h2>
         <SyncButton onDone={load} />
       </div>
       <div className="panel">
         <table className="log-table">
           <thead>
             <tr>
-              <th>Rule ID</th>
+              <th>ID de règle</th>
               <th>Description</th>
               <th>Interface</th>
               <th>Action</th>
-              <th>Direction</th>
-              <th>Protocol</th>
+              <th>Sens</th>
+              <th>Protocole</th>
               <th>Source</th>
               <th>Destination</th>
-              <th>Enabled</th>
+              <th>Activée</th>
             </tr>
           </thead>
           <tbody>
@@ -44,18 +44,18 @@ export function OpnsenseRules() {
                 <td>{rule.protocol}</td>
                 <td className="mono">{rule.source}</td>
                 <td className="mono">{rule.destination}</td>
-                <td>{rule.enabled ? "yes" : "no"}</td>
+                <td>{rule.enabled ? "oui" : "non"}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        {items.length === 0 && <p className="muted">No rules. Configure SSH and synchronise.</p>}
+        {items.length === 0 && <p className="muted">Aucune règle. Configurez le SSH et synchronisez.</p>}
       </div>
       {selected && (
         <div className="panel">
           <div className="topbar">
-            <h3 style={{ margin: 0 }}>Rule {selected.rule_id}</h3>
-            <button onClick={() => setSelected(null)}>Close</button>
+            <h3 style={{ margin: 0 }}>Règle {selected.rule_id}</h3>
+            <button onClick={() => setSelected(null)}>Fermer</button>
           </div>
           <p>{selected.description}</p>
           <pre className="mono">{JSON.stringify(selected.history ?? [], null, 2)}</pre>

@@ -16,23 +16,23 @@ export function Login() {
       await login(username, password);
       navigate("/");
     } catch {
-      setError("Invalid credentials");
+      setError("Identifiants invalides");
     }
   };
 
   return (
     <div className="login-wrap">
       <form className="login-box" onSubmit={submit}>
-        <h1>OPNsense Log Analyzer</h1>
-        <input placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} />
+        <h1>Analyseur de logs OPNsense</h1>
+        <input placeholder="Nom d'utilisateur" value={username} onChange={(e) => setUsername(e.target.value)} />
         <input
           type="password"
-          placeholder="Password"
+          placeholder="Mot de passe"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
         {error && <div className="error">{error}</div>}
-        <button type="submit">Sign in</button>
+        <button type="submit">Se connecter</button>
       </form>
     </div>
   );
