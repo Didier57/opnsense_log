@@ -50,11 +50,16 @@ async def _opnsense_sync_loop() -> None:
 async def lifespan(app: FastAPI):
     setup_logging()
     logger.info("Starting OPNsense Log Analyzer")
-    # Initialise storage early so schema exists before the first insert.
+    # Bind the syslog socket *before* opening the database so that events start
+    # flowing into the Live view immediately, even when opening a large DuckDB
+    # file (WAL replay) is slow. Workers resolve the DB lazily on first flush.
+    await syslog_server.start()
+    logger.info("Syslog listener is up; waiting for data")
+    # Initialise storage early so schema exists before the first insert. Running
+    # it in a thread keeps the event loop (and syslog reception) responsive.
     from .storage.database import get_database
 
-    get_database()
-    await syslog_server.start()
+    await asyncio.to_thread(get_database)
     tasks = [
         asyncio.create_task(retention_loop(), name="retention"),
         asyncio.create_task(_opnsense_sync_loop(), name="opnsense-sync"),

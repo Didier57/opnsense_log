@@ -22,7 +22,7 @@ async def retention_loop(repo: EventRepository | None = None) -> None:
         try:
             if settings.log_retention_days > 0:
                 cutoff = datetime.now(timezone.utc) - timedelta(days=settings.log_retention_days)
-                deleted = repo.delete_older_than(cutoff)
+                deleted = await asyncio.to_thread(repo.delete_older_than, cutoff)
                 if deleted:
                     logger.info("Retention: deleted %s events older than %s", deleted, cutoff)
         except Exception:  # noqa: BLE001

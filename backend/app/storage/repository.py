@@ -45,7 +45,15 @@ def _event_row(event: FirewallEvent) -> tuple:
 
 class EventRepository:
     def __init__(self, db: Database | None = None) -> None:
-        self.db = db or get_database()
+        # Opened lazily: constructing the repository (e.g. from the syslog server
+        # singleton at import time) must not block on opening a large DuckDB file.
+        self._db = db
+
+    @property
+    def db(self) -> Database:
+        if self._db is None:
+            self._db = get_database()
+        return self._db
 
     # ------------------------------------------------------------------ write
     def insert_events(self, events: list[FirewallEvent]) -> int:
