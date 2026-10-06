@@ -49,15 +49,21 @@ def static_lease_paths() -> list[str]:
 
 
 def discover_script() -> str:
-    """Remote command that prints candidate lease file paths, one per line."""
-    return (
-        "grep -rhoE 'dhcp-leasefile=[^[:space:]]+' "
+    """Remote command that prints candidate lease file paths, one per line.
+
+    Wrapped in `sh -c '...'` so it also works when the connection shell is
+    csh/tcsh (the default on FreeBSD/OPNsense root), which does not support
+    `2>` redirection or the POSIX spacing used here.
+    """
+    inner = (
+        'grep -rhoE "dhcp-leasefile=[^[:space:]]+" '
         f"{_DISCOVER_CONFIGS} 2>/dev/null | "
-        "sed -e 's/^dhcp-leasefile=//' -e 's/\"//g'; "
+        'sed -e "s/^dhcp-leasefile=//" -e "s/\\"//g"; '
         f"find {_DISCOVER_DIRS} -maxdepth 3 "
-        "\\( -name '*.leases' -o -name 'kea-leases*.csv' "
-        "-o -name 'dnsmasq-hosts' -o -name 'dnsmasq-leases' \\) -type f 2>/dev/null"
+        '\\( -name "*.leases" -o -name "kea-leases*.csv" '
+        '-o -name "dnsmasq-hosts" -o -name "dnsmasq-leases" \\) -type f 2>/dev/null'
     )
+    return f"sh -c '{inner}'"
 
 
 def parse_discovered_paths(text: str) -> list[str]:
@@ -71,10 +77,14 @@ def parse_discovered_paths(text: str) -> list[str]:
 
 
 def fetch_script(paths: list[str] | None = None) -> str:
-    """Build the remote shell command that dumps the given lease files."""
+    """Build the remote shell command that dumps the given lease files.
+
+    Wrapped in `sh -c '...'` because the SSH login shell on OPNsense may be
+    csh/tcsh, which rejects `2>/dev/null` and would abort the whole command.
+    """
     targets = paths or _LEASE_PATHS
     parts = [f'echo "###{path}"; cat "{path}" 2>/dev/null' for path in targets]
-    return "; ".join(parts)
+    return "sh -c '" + "; ".join(parts) + "'"
 
 
 def _norm_hostname(value: str) -> str | None:

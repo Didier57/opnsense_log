@@ -1,7 +1,12 @@
 """Tests for DHCP lease parsing (ISC and Kea) and resolver integration."""
 import pytest
 
-from app.opnsense.dhcp import parse_dhcp_leases, parse_discovered_paths
+from app.opnsense.dhcp import (
+    discover_script,
+    fetch_script,
+    parse_dhcp_leases,
+    parse_discovered_paths,
+)
 from app.storage.database import Database
 import app.core.hostnames as hn
 
@@ -142,3 +147,12 @@ def test_parse_discovered_paths():
         "/var/db/dnsmasq.leases",
         "/var/db/kea/kea-leases4.csv",
     ]
+
+
+def test_scripts_are_posix_wrapped():
+    """Remote scripts must run under `sh` even when the login shell is csh."""
+    for script in (fetch_script(), discover_script()):
+        assert script.startswith("sh -c '")
+        assert "'" not in script[7:-1]  # single quotes would break the wrapper
+    assert "/var/etc/dnsmasq-hosts" in fetch_script()
+    assert "sh -c" in discover_script()
