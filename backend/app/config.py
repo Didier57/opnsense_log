@@ -67,6 +67,11 @@ class Settings(BaseSettings):
     # converted to UTC for storage. Empty means "use display_timezone".
     syslog_timezone: str = ""
 
+    # --- Hostname lookup (reverse DNS) ---
+    # How long a resolved IP -> hostname mapping is kept before being looked up
+    # again (minutes).
+    hostname_lookup_ttl_min: int = 1440
+
     @property
     def syslog_protocols(self) -> list[str]:
         value = self.syslog_protocol.lower().strip()

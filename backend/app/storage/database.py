@@ -119,6 +119,12 @@ CREATE TABLE IF NOT EXISTS app_logs (
     "source"   VARCHAR,
     "message"  VARCHAR
 );
+
+CREATE TABLE IF NOT EXISTS hostname_cache (
+    "ip"         VARCHAR PRIMARY KEY,
+    "hostname"   VARCHAR,
+    "updated_at" TIMESTAMPTZ
+);
 """
 
 

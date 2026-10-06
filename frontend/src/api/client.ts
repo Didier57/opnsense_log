@@ -113,6 +113,11 @@ export const api = {
   syncRules: () => request<{ ok: boolean }>("/api/rules/sync", { method: "POST" }),
   interfaces: () => request<{ items: OpnsenseInterface[] }>("/api/interfaces"),
 
+  lookupHostnames: (ips: string[]) =>
+    request<{ items: Record<string, string | null> }>(
+      `/api/lookup?ips=${encodeURIComponent(ips.join(","))}`,
+    ),
+
   settings: () => request<Record<string, unknown>>("/api/settings"),
   appSettings: () => request<Record<string, unknown>>("/api/settings/application"),
   updateAppSettings: (payload: Record<string, unknown>) =>

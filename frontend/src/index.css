@@ -91,6 +91,7 @@ table.log-table th, table.log-table td { text-align: left; padding: 6px 10px; bo
 table.log-table .truncate { display: inline-block; max-width: 460px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 table.log-table td.desc-cell { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 table.log-table td.wrap-cell { white-space: normal; word-break: break-word; max-width: 240px; }
+.hostline { font-size: 11px; line-height: 1.2; }
 table.log-table th { color: var(--text-dim); font-weight: 500; position: sticky; top: 0; background: var(--bg-panel); }
 table.log-table tr:hover { background: var(--bg-alt); cursor: pointer; }
 .table-scroll { max-height: 60vh; overflow: auto; }

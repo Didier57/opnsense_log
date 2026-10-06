@@ -9,6 +9,7 @@ from . import (
     interfaces,
     live,
     logs,
+    lookup,
     rules,
     search,
     settings,
@@ -19,6 +20,6 @@ from . import (
 api_router = APIRouter()
 for module in (
     health, auth, logs, search, statistics, filters, rules, interfaces,
-    settings, system, export, live,
+    settings, system, export, live, lookup,
 ):
     api_router.include_router(module.router)

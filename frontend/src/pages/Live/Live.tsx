@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { liveSocketUrl } from "../../api/client";
+import { api, liveSocketUrl } from "../../api/client";
 import { LogTable } from "../../components/LogTable/LogTable";
 import { EventDetails } from "../../components/EventDetails/EventDetails";
 import { QuickFilters, QUICK_FILTERS } from "../../components/Filters/QuickFilters";
@@ -20,16 +20,21 @@ export function Live() {
   const [clauses, setClauses] = useState<SearchClause[]>([]);
   const [logic, setLogic] = useState("AND");
   const [selected, setSelected] = useState<FirewallEvent | null>(null);
+  const [lookupEnabled, setLookupEnabled] = useState(false);
+  const [hostnameMap, setHostnameMap] = useState<Record<string, string>>({});
 
   const pausedRef = useRef(paused);
   const limitRef = useRef(limit);
   const pendingRef = useRef<FirewallEvent[]>([]);
+  const eventsRef = useRef<FirewallEvent[]>([]);
+  const hostnameMapRef = useRef(hostnameMap);
   const interfaceMap = useInterfaceMap();
   const interfaces = useInterfaces();
   const ruleMap = useRuleMap();
 
   pausedRef.current = paused;
   limitRef.current = limit;
+  hostnameMapRef.current = hostnameMap;
 
   const lanDev = findInterfaceDevice(interfaces, "LAN");
   const wanDev = findInterfaceDevice(interfaces, "WAN");
@@ -93,6 +98,37 @@ export function Live() {
     () => raw.filter((event) => eventMatches(event, clauses, logic)),
     [raw, clauses, logic],
   );
+  eventsRef.current = events;
+
+  // Resolve hostnames for the currently displayed IPs, at a slow pace and only
+  // for IPs we have not seen yet, so the background lookups never compete with
+  // the live stream.
+  useEffect(() => {
+    if (!lookupEnabled) return;
+    const timer = window.setInterval(() => {
+      const known = hostnameMapRef.current;
+      const ips = new Set<string>();
+      for (const event of eventsRef.current) {
+        if (event.src_ip) ips.add(event.src_ip);
+        if (event.dst_ip) ips.add(event.dst_ip);
+      }
+      const pending = [...ips].filter((ip) => !(ip in known)).slice(0, 200);
+      if (pending.length === 0) return;
+      api
+        .lookupHostnames(pending)
+        .then((res) => {
+          const found: Record<string, string> = {};
+          Object.entries(res.items).forEach(([ip, name]) => {
+            if (name) found[ip] = name;
+          });
+          if (Object.keys(found).length > 0) {
+            setHostnameMap((prev) => ({ ...prev, ...found }));
+          }
+        })
+        .catch(() => undefined);
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [lookupEnabled]);
 
   const clearAll = () => {
     setClauses([]);
@@ -113,6 +149,14 @@ export function Live() {
           </button>
           <button onClick={() => setRaw([])}>Vider</button>
           <button onClick={clearAll}>Réinitialiser les filtres</button>
+          <label className="muted" style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={lookupEnabled}
+              onChange={(e) => setLookupEnabled(e.target.checked)}
+            />
+            Rechercher les noms d'hôtes
+          </label>
           <select value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
             {LIMITS.map((l) => (
               <option key={l} value={l}>
@@ -140,6 +184,7 @@ export function Live() {
           onSelect={setSelected}
           interfaceMap={interfaceMap}
           ruleMap={ruleMap}
+          hostnameMap={lookupEnabled ? hostnameMap : {}}
         />
       </div>
       <EventDetails
