@@ -116,6 +116,7 @@ All configuration is provided through environment variables (see `.env.example`)
 | `AUTH_PASSWORD_HASH` | – | Argon2 hash; takes precedence over `AUTH_PASSWORD` |
 | `SECRET_KEY` | – | JWT signing secret |
 | `DISPLAY_TIMEZONE` | `Europe/Luxembourg` | timezone used for display |
+| `SYSLOG_TIMEZONE` | `DISPLAY_TIMEZONE` | timezone in which OPNsense emits syslog timestamps |
 | `LOG_LEVEL` | `INFO` | `INFO`/`WARNING`/`ERROR`/`DEBUG` |
 
 The OPNsense SSH connection (host, port, username, auth type, password/key path, sync
@@ -124,7 +125,9 @@ values are stored server-side in the data volume and override any defaults, so n
 environment variables are needed. (Advanced/headless deployments may still set the
 `OPNSENSE_*` environment variables as fallback defaults.)
 
-> Timestamps are stored in **UTC** and displayed in the configured timezone.
+> Timestamps are stored in **UTC**. OPNsense syslog lines carry no timezone offset, so
+> they are interpreted in `SYSLOG_TIMEZONE` (defaults to `DISPLAY_TIMEZONE`) and converted
+> to UTC, then displayed in the viewer's local timezone.
 
 ## Development
 

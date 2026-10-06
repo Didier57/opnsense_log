@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 from . import filterlog, rfc3164, rfc5424
 from .models import FirewallEvent, ParseResult
+from .tz import source_tz
 
 # OPNsense "simplified" format: ISO timestamp, host tag, payload.
 # 2025-09-08T20:31:34 filterlog 30,,,...
@@ -30,7 +31,7 @@ def _coerce_dt(value: str) -> datetime:
     except ValueError:
         return datetime.now(timezone.utc)
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=source_tz())
     return dt.astimezone(timezone.utc)
 
 

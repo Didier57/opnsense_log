@@ -7,13 +7,14 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 from ..storage.database import Database, get_database
-from .config_loader import parse_config
+from .config_loader import parse_config, parse_rules_debug
 from .settings_store import get_opnsense_settings
 from .ssh import OPNsenseSSH, SSHError
 
 logger = logging.getLogger("opnsense.sync")
 
 CONFIG_PATH = "/conf/config.xml"
+RULES_DEBUG_PATH = "/tmp/rules.debug"
 
 
 class OPNSenseSync:
@@ -35,6 +36,10 @@ class OPNSenseSync:
 
     def fetch_config(self) -> str:
         return self.ssh.run(f"cat {CONFIG_PATH}")
+
+    def fetch_rules_debug(self) -> str:
+        """Fetch the generated pf ruleset (contains labels + descriptions)."""
+        return self.ssh.run(f"cat {RULES_DEBUG_PATH}")
 
     def sync(self) -> dict:
         """Fetch config over SSH and persist interfaces and rules.
@@ -66,6 +71,20 @@ class OPNSenseSync:
         except ET.ParseError as exc:
             logger.error("Failed to parse OPNsense config: %s", exc)
             return {"ok": False, "error": f"config parse error: {exc}"}
+
+        # Resolve automatic/system/NAT rules that only exist in the loaded
+        # ruleset (never in config.xml): each rule line carries
+        # `label "<id>"` and a trailing `# <description>`.
+        try:
+            debug = self.fetch_rules_debug()
+            loaded = parse_rules_debug(debug)
+            known = {rule["rule_id"] for rule in rules}
+            extra = [rule for rule in loaded if rule["rule_id"] not in known]
+            rules.extend(extra)
+        except SSHError as exc:
+            logger.warning("Could not fetch %s: %s", RULES_DEBUG_PATH, exc)
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to parse %s", RULES_DEBUG_PATH)
 
         now = datetime.now(timezone.utc)
         try:

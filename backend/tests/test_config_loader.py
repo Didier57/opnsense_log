@@ -8,6 +8,7 @@ from app.opnsense.config_loader import (
     _php_json,
     calc_rule_hash,
     parse_config,
+    parse_rules_debug,
     to_array,
 )
 
@@ -181,3 +182,30 @@ def test_parse_new_model_rule_id_is_normalised():
     assert block["enabled"] is False
     assert block["action"] == "block"
     assert block["source"] == "!wan"
+
+
+RULES_DEBUG = """
+pass in log quick on vlan0.10 inet from any to any flags S/SA keep state tag "abc" label "f1cfa12fd466e923172927c2557b172f" # let out anything from firewall host itself (force gw)
+block drop in log quick on vtnet1 inet from any to any label "cd4617bd680a0a5aa4c5694f2eefa56e" # Default allow LAN to any rule
+rdr on vtnet1 inet proto tcp from any to any label "aabbccdd11223344556677889900aabb" # nat rule
+"""
+
+
+def test_parse_rules_debug_extracts_label_and_descr():
+    rules = parse_rules_debug(RULES_DEBUG)
+    assert len(rules) == 3
+    force_gw = next(r for r in rules if r["rule_id"] == "f1cfa12fd466e923172927c2557b172f")
+    assert force_gw["description"] == "let out anything from firewall host itself (force gw)"
+    assert force_gw["action"] == "pass"
+    assert force_gw["direction"] == "in"
+    assert force_gw["interface"] == "vlan0.10"
+
+    nat = next(r for r in rules if r["rule_id"] == "aabbccdd11223344556677889900aabb")
+    assert nat["description"] == "nat rule"
+    assert nat["action"] == "pass"
+    assert nat["protocol"] == "tcp"
+
+
+def test_parse_rules_debug_normalises_dashed_uuid():
+    rules = parse_rules_debug('pass on vtnet0 label "AABBCCDD-1122-3344-5566-77889900AABB" # X')
+    assert rules[0]["rule_id"] == "aabbccdd11223344556677889900aabb"

@@ -60,7 +60,12 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # --- Timezone ---
+    # Timezone used to display timestamps in the UI.
     display_timezone: str = "Europe/Luxembourg"
+    # Timezone in which OPNsense emits syslog timestamps (usually the firewall
+    # local time). Naive incoming timestamps are interpreted in this timezone and
+    # converted to UTC for storage. Empty means "use display_timezone".
+    syslog_timezone: str = ""
 
     @property
     def syslog_protocols(self) -> list[str]:

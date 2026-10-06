@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
+from .tz import source_tz
+
 _RE = re.compile(
     r"^<(?P<pri>\d{1,3})>(?P<version>\d+)\s+"
     r"(?P<timestamp>\S+)\s+"
@@ -30,7 +32,8 @@ def parse_header(message: str) -> dict | None:
     try:
         ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
         if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
+            ts = ts.replace(tzinfo=source_tz())
+        ts = ts.astimezone(timezone.utc)
     except ValueError:
         return None
     return {

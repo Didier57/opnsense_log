@@ -22,6 +22,7 @@ services:
       AUTH_PASSWORD_HASH: "${AUTH_PASSWORD_HASH:-}"
       SECRET_KEY: "${SECRET_KEY:-change-me-in-production}"
       DISPLAY_TIMEZONE: "${DISPLAY_TIMEZONE:-Europe/Luxembourg}"
+      SYSLOG_TIMEZONE: "${SYSLOG_TIMEZONE:-Europe/Luxembourg}"
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
     volumes:
       - opnsense_logs:/data

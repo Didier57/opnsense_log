@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import xml.etree.ElementTree as ET
 
 
@@ -211,3 +212,65 @@ def parse_rules(root: ET.Element) -> list[dict]:
 def parse_config(contents: str) -> tuple[list[dict], list[dict]]:
     root = ET.fromstring(contents)
     return parse_interfaces(root), parse_rules(root)
+
+
+_LABEL_RE = re.compile(r'\blabel\s+"([^"]*)"')
+_ACTION_RE = re.compile(r"^\s*(?:\w+\s+)*?(pass|block|match|rdr|nat|binat|no)\b")
+_ON_RE = re.compile(r"\bon\s+(\S+)")
+_DIR_RE = re.compile(r"\b(in|out)\b")
+_PROTO_RE = re.compile(r"\b(tcp|udp|icmp6|icmp|ipv6-icmp|esp|ah|gre|igmp)\b")
+
+
+def parse_rules_debug(contents: str) -> list[dict]:
+    """Parse the generated ``/tmp/rules.debug`` ruleset into rule dicts.
+
+    Each loaded rule carries ``label "<rule_id>"`` (the value found in the 4th
+    ``filterlog`` field) and, thanks to ``parseComment``, a trailing
+    ``# <description>`` comment. This lets us resolve automatic/system rules and
+    NAT rules that never appear in ``config.xml``.
+    """
+    rules: list[dict] = []
+    seen: set[str] = set()
+    for line in contents.splitlines():
+        match = _LABEL_RE.search(line)
+        if not match:
+            continue
+        rule_id = _norm_id(match.group(1))
+        if not rule_id or rule_id in seen:
+            continue
+        seen.add(rule_id)
+
+        description = ""
+        hash_index = line.find("#")
+        if hash_index != -1:
+            description = line[hash_index + 1:].strip()
+
+        action_match = _ACTION_RE.match(line)
+        action = action_match.group(1) if action_match else "pass"
+        if action in {"rdr", "nat", "binat", "no"}:
+            action = "pass"
+
+        on_match = _ON_RE.search(line)
+        direction_match = _DIR_RE.search(line)
+        proto_match = _PROTO_RE.search(line)
+        protocol = proto_match.group(1) if proto_match else "any"
+        if protocol == "ipv6-icmp":
+            protocol = "icmp6"
+
+        rules.append(
+            {
+                "rule_id": rule_id,
+                "label": rule_id,
+                "tracker": "",
+                "rule_number": None,
+                "description": description or rule_id,
+                "interface": on_match.group(1) if on_match else "",
+                "action": action,
+                "direction": direction_match.group(1) if direction_match else "",
+                "protocol": protocol,
+                "source": "",
+                "destination": "",
+                "enabled": True,
+            }
+        )
+    return rules

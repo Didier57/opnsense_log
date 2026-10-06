@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
+from .tz import source_tz
+
 # <PRI>Mon dd hh:mm:ss host tag: msg
 _RE = re.compile(
     r"^<(?P<pri>\d{1,3})>"
@@ -35,8 +37,11 @@ def parse_header(message: str, year: int | None = None) -> dict | None:
         month_s, day_s, time_s = ts_raw.split()
         month = _MONTHS[month_s]
         hh, mm, ss = (int(x) for x in time_s.split(":"))
-        year = year or datetime.now(timezone.utc).year
-        ts = datetime(year, month, int(day_s), hh, mm, ss, tzinfo=timezone.utc)
+        tz = source_tz()
+        year = year or datetime.now(tz).year
+        # RFC3164 timestamps carry no offset: interpret them in the firewall's
+        # local timezone, then normalise to UTC for storage.
+        ts = datetime(year, month, int(day_s), hh, mm, ss, tzinfo=tz).astimezone(timezone.utc)
     except (ValueError, KeyError):
         return None
     return {
