@@ -24,11 +24,10 @@ export function LogTable({ events, onSelect, interfaceMap = {}, ruleMap = {} }: 
             <th>Time</th>
             <th>Interface</th>
             <th>Action</th>
-            <th>Direction</th>
+            <th>In/Out</th>
             <th>Proto</th>
             <th>Source</th>
             <th>Destination</th>
-            <th>Flags</th>
             <th>Label</th>
           </tr>
         </thead>
@@ -40,7 +39,11 @@ export function LogTable({ events, onSelect, interfaceMap = {}, ruleMap = {} }: 
               <td>
                 <span className={`badge ${actionClass(event.action)}`}>{event.action.toUpperCase()}</span>
               </td>
-              <td>{event.direction}</td>
+              <td>
+                <span className="badge other">
+                  {event.direction ? event.direction[0].toUpperCase() + event.direction.slice(1) : "—"}
+                </span>
+              </td>
               <td>{event.protocol}</td>
               <td className="mono">
                 {event.src_ip}
@@ -50,7 +53,6 @@ export function LogTable({ events, onSelect, interfaceMap = {}, ruleMap = {} }: 
                 {event.dst_ip}
                 {portLabel(event.dst_port)}
               </td>
-              <td className="mono">{event.tcp_flags}</td>
               <td title={ruleMap[event.rule_id] ?? ""}>
                 {ruleMap[event.rule_id] ?? <span className="muted">—</span>}
               </td>
