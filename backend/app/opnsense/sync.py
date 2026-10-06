@@ -24,12 +24,12 @@ class OPNSenseSync:
     def _build_ssh() -> OPNsenseSSH:
         cfg = get_opnsense_settings(mask_password=False)
         return OPNsenseSSH(
-            host=cfg["host"],
-            port=cfg["port"],
-            username=cfg["username"],
-            auth_type=cfg["auth_type"],
-            password=cfg.get("password"),
-            key_path=cfg["key_path"],
+            host=cfg["opnsense_host"],
+            port=cfg["opnsense_ssh_port"],
+            username=cfg["opnsense_username"],
+            auth_type=cfg["opnsense_auth_type"],
+            password=cfg.get("opnsense_password"),
+            key_path=cfg["opnsense_key_path"],
         )
 
     def fetch_config(self) -> str:

@@ -34,9 +34,11 @@ class SavedFilterCreate(BaseModel):
 
 
 class OPNsenseSettings(BaseModel):
-    host: str | None = None
-    port: int | None = None
-    username: str | None = None
-    auth_type: str | None = None
-    password: str | None = None
-    key_path: str | None = None
+    opnsense_host: str | None = None
+    opnsense_ssh_port: int | None = None
+    opnsense_username: str | None = None
+    opnsense_auth_type: str | None = None
+    opnsense_password: str | None = None
+    opnsense_key_path: str | None = None
+    opnsense_sync_enabled: bool | None = None
+    opnsense_sync_interval_min: int | None = None

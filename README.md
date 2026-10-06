@@ -117,10 +117,12 @@ All configuration is provided through environment variables (see `.env.example`)
 | `SECRET_KEY` | – | JWT signing secret |
 | `DISPLAY_TIMEZONE` | `Europe/Luxembourg` | timezone used for display |
 | `LOG_LEVEL` | `INFO` | `INFO`/`WARNING`/`ERROR`/`DEBUG` |
-| `OPNSENSE_SYNC_ENABLED` | `false` | enable periodic OPNsense SSH sync |
 
-OPNsense connection (host/port/username/auth/password/key) can also be configured at
-runtime from **Settings → OPNsense** in the web UI.
+The OPNsense SSH connection (host, port, username, auth type, password/key path, sync
+enabled and interval) is configured **from the web UI** under **Settings → OPNsense**. The
+values are stored server-side in the data volume and override any defaults, so no
+environment variables are needed. (Advanced/headless deployments may still set the
+`OPNSENSE_*` environment variables as fallback defaults.)
 
 > Timestamps are stored in **UTC** and displayed in the configured timezone.
 

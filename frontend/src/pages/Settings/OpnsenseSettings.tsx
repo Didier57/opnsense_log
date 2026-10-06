@@ -3,18 +3,20 @@ import { api } from "../../api/client";
 
 const FIELDS: { key: string; label: string; type?: string }[] = [
   { key: "opnsense_host", label: "Host" },
-  { key: "opnsense_port", label: "SSH port", type: "number" },
+  { key: "opnsense_ssh_port", label: "SSH port", type: "number" },
   { key: "opnsense_username", label: "Username" },
   { key: "opnsense_auth_type", label: "Auth type (password / key)" },
-  { key: "opnsense_password", label: "Password", type: "password" },
+  { key: "opnsense_password", label: "Password (leave empty to keep current)", type: "password" },
   { key: "opnsense_key_path", label: "Private key path" },
   { key: "opnsense_sync_interval_min", label: "Sync interval (min)", type: "number" },
 ];
 
 export function OpnsenseSettings() {
   const [form, setForm] = useState<Record<string, any>>({});
+  const [hasPassword, setHasPassword] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const load = () =>
     api
@@ -24,7 +26,8 @@ export function OpnsenseSettings() {
         FIELDS.forEach((field) => {
           next[field.key] = data[field.key] ?? "";
         });
-        next.opnsense_enabled = Boolean(data.opnsense_enabled);
+        next.opnsense_sync_enabled = Boolean(data.opnsense_sync_enabled);
+        setHasPassword(Boolean(data.has_password));
         setForm(next);
       })
       .catch(() => undefined);
@@ -36,23 +39,32 @@ export function OpnsenseSettings() {
   const save = async () => {
     setError("");
     setMessage("");
+    setBusy(true);
     try {
-      await api.updateOpnsense(form);
+      const payload: Record<string, unknown> = { ...form };
+      // Never overwrite a stored password with an empty field.
+      if (!payload.opnsense_password) delete payload.opnsense_password;
+      await api.updateOpnsense(payload);
       setMessage("Saved.");
       load();
     } catch (e) {
       setError(String(e));
+    } finally {
+      setBusy(false);
     }
   };
 
   const test = async () => {
     setError("");
     setMessage("");
+    setBusy(true);
     try {
       const result = await api.testOpnsense();
       setMessage(result.message || (result.ok ? "Connection OK" : "Connection failed"));
     } catch (e) {
       setError(String(e));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -61,9 +73,11 @@ export function OpnsenseSettings() {
       <div className="topbar">
         <h2>OPNsense connection</h2>
         <div className="filters">
-          <button onClick={test}>Test connection</button>
-          <button className="active" onClick={save}>
-            Save
+          <button onClick={test} disabled={busy}>
+            Test connection
+          </button>
+          <button className="active" onClick={save} disabled={busy}>
+            {busy ? "…" : "Save"}
           </button>
         </div>
       </div>
@@ -71,8 +85,8 @@ export function OpnsenseSettings() {
         <label className="filters">
           <input
             type="checkbox"
-            checked={Boolean(form.opnsense_enabled)}
-            onChange={(e) => setForm({ ...form, opnsense_enabled: e.target.checked })}
+            checked={Boolean(form.opnsense_sync_enabled)}
+            onChange={(e) => setForm({ ...form, opnsense_sync_enabled: e.target.checked })}
           />
           Enable automatic synchronisation
         </label>
@@ -82,10 +96,14 @@ export function OpnsenseSettings() {
           <div key={field.key} style={{ marginBottom: 10 }}>
             <label className="muted" style={{ display: "block", marginBottom: 4 }}>
               {field.label}
+              {field.key === "opnsense_password" && hasPassword ? " (a password is stored)" : ""}
             </label>
             <input
               type={field.type || "text"}
               value={form[field.key] ?? ""}
+              placeholder={
+                field.key === "opnsense_password" && hasPassword ? "••••••••" : undefined
+              }
               style={{ width: 320 }}
               onChange={(e) =>
                 setForm({
@@ -98,7 +116,8 @@ export function OpnsenseSettings() {
           </div>
         ))}
         <p className="muted">
-          Prefer SSH key authentication. Private key contents are never written to logs.
+          Prefer SSH key authentication. Settings are stored server-side (data volume) and
+          override any defaults from environment variables. Private keys are never written to logs.
         </p>
       </div>
     </>

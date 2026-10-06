@@ -48,13 +48,15 @@ def put_opnsense(payload: OPNsenseSettings, user: str = Depends(require_user)) -
 @router.post("/opnsense/test")
 def test_opnsense(user: str = Depends(require_user)) -> dict:
     cfg = get_opnsense_settings(mask_password=False)
+    if not cfg.get("opnsense_host"):
+        return {"ok": False, "message": "OPNsense host not configured"}
     client = OPNsenseSSH(
-        host=cfg["host"],
-        port=cfg["port"],
-        username=cfg["username"],
-        auth_type=cfg["auth_type"],
-        password=cfg.get("password"),
-        key_path=cfg["key_path"],
+        host=cfg["opnsense_host"],
+        port=cfg["opnsense_ssh_port"],
+        username=cfg["opnsense_username"],
+        auth_type=cfg["opnsense_auth_type"],
+        password=cfg.get("opnsense_password"),
+        key_path=cfg["opnsense_key_path"],
     )
     ok = client.test_connection()
     return {"ok": ok, "message": "connection successful" if ok else "connection failed"}

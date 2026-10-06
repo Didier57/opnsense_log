@@ -23,7 +23,6 @@ services:
       SECRET_KEY: "${SECRET_KEY:-change-me-in-production}"
       DISPLAY_TIMEZONE: "${DISPLAY_TIMEZONE:-Europe/Luxembourg}"
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
-      OPNSENSE_SYNC_ENABLED: "${OPNSENSE_SYNC_ENABLED:-false}"
     volumes:
       - opnsense_logs:/data
 

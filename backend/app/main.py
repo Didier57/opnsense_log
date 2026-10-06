@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from .api import api_router
 from .config import settings
 from .core.logging import setup_logging
+from .opnsense.settings_store import get_opnsense_settings
 from .opnsense.sync import OPNSenseSync
 from .storage.retention import retention_loop
 from .syslog.server import syslog_server
@@ -21,15 +22,28 @@ logger = logging.getLogger("opnsense.main")
 
 
 async def _opnsense_sync_loop() -> None:
-    if not settings.opnsense_sync_enabled:
-        return
-    interval = max(5, settings.opnsense_sync_interval_min) * 60
+    """Periodically sync OPNsense config.
+
+    Reads the enable flag and interval from the runtime settings store so the
+    values saved in the web UI take effect without a restart.
+    """
     while True:
         try:
-            await asyncio.to_thread(OPNSenseSync().sync)
+            cfg = get_opnsense_settings(mask_password=False)
         except Exception:  # noqa: BLE001
-            logger.exception("OPNsense sync loop error")
-        await asyncio.sleep(interval)
+            logger.exception("Could not read OPNsense settings")
+            cfg = {}
+        enabled = bool(cfg.get("opnsense_sync_enabled"))
+        interval_min = max(5, int(cfg.get("opnsense_sync_interval_min") or 30))
+        if enabled:
+            try:
+                await asyncio.to_thread(OPNSenseSync().sync)
+            except Exception:  # noqa: BLE001
+                logger.exception("OPNsense sync loop error")
+            await asyncio.sleep(interval_min * 60)
+        else:
+            # Poll periodically so enabling the toggle is picked up quickly.
+            await asyncio.sleep(30)
 
 
 @asynccontextmanager

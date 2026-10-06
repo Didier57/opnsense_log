@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     opnsense_password: str = ""
     opnsense_key_path: str = ""
     opnsense_sync_interval_min: int = 30
-    opnsense_sync_enabled: bool = True
+    opnsense_sync_enabled: bool = False
 
     # --- Auth ---
     auth_enabled: bool = True

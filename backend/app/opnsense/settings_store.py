@@ -1,13 +1,15 @@
 """Runtime-mutable OPNsense connection settings persisted in DuckDB.
 
-Environment variables provide defaults; values saved from the UI override them
-and survive container restarts (they live in the mounted data volume).
+Environment variables provide defaults; values saved from the web UI override
+them and survive container restarts (they live in the mounted data volume).
 """
 from __future__ import annotations
 
 from ..config import settings
 from ..storage.database import get_database
 
+# Keys here match the application Settings field names (and therefore the
+# environment variable names), so the web UI and .env share one vocabulary.
 _KEYS = [
     "opnsense_host",
     "opnsense_ssh_port",
@@ -15,7 +17,15 @@ _KEYS = [
     "opnsense_auth_type",
     "opnsense_password",
     "opnsense_key_path",
+    "opnsense_sync_enabled",
+    "opnsense_sync_interval_min",
 ]
+
+
+def _as_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def get_opnsense_settings(mask_password: bool = True) -> dict:
@@ -31,33 +41,30 @@ def get_opnsense_settings(mask_password: bool = True) -> dict:
         return overrides.get(key, getattr(settings, key, ""))
 
     result = {
-        "host": value("opnsense_host"),
-        "port": int(value("opnsense_ssh_port") or 22),
-        "username": value("opnsense_username"),
-        "auth_type": value("opnsense_auth_type"),
-        "key_path": value("opnsense_key_path"),
+        "opnsense_host": value("opnsense_host"),
+        "opnsense_ssh_port": int(value("opnsense_ssh_port") or 22),
+        "opnsense_username": value("opnsense_username"),
+        "opnsense_auth_type": value("opnsense_auth_type"),
+        "opnsense_key_path": value("opnsense_key_path"),
+        "opnsense_sync_enabled": _as_bool(value("opnsense_sync_enabled")),
+        "opnsense_sync_interval_min": int(value("opnsense_sync_interval_min") or 30),
         "has_password": bool(value("opnsense_password")),
     }
     if not mask_password:
-        result["password"] = value("opnsense_password")
+        result["opnsense_password"] = value("opnsense_password")
     return result
 
 
 def update_opnsense_settings(payload: dict) -> dict:
     db = get_database()
-    mapping = {
-        "host": "opnsense_host",
-        "port": "opnsense_ssh_port",
-        "username": "opnsense_username",
-        "auth_type": "opnsense_auth_type",
-        "password": "opnsense_password",
-        "key_path": "opnsense_key_path",
-    }
-    for field, key in mapping.items():
-        if field in payload and payload[field] is not None:
+    for key in _KEYS:
+        if key in payload and payload[key] is not None:
+            value = payload[key]
+            if isinstance(value, bool):
+                value = "true" if value else "false"
             db.execute_write(
                 'INSERT INTO app_settings ("key", "value", "updated_at") VALUES (?, ?, now()) '
                 'ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value", "updated_at" = excluded."updated_at"',
-                [key, str(payload[field])],
+                [key, str(value)],
             )
     return get_opnsense_settings()
