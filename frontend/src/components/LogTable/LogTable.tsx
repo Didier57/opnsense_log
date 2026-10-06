@@ -1,5 +1,6 @@
 import type { FirewallEvent } from "../../types";
-import { actionClass, flagEmoji, formatDateTime, portLabel } from "../../format";
+import { actionClass, formatDateTime, portLabel } from "../../format";
+import { CountryFlag } from "../CountryFlag";
 
 interface Props {
   events: FirewallEvent[];
@@ -53,11 +54,7 @@ export function LogTable({ events, onSelect, interfaceMap = {}, ruleMap = {}, ho
                   {event.src_ip}
                   {portLabel(event.src_port)}
                 </span>
-                {countryMap[event.src_ip] && (
-                  <span className="flag" title={countryMap[event.src_ip]}>
-                    {flagEmoji(countryMap[event.src_ip])}
-                  </span>
-                )}
+                <CountryFlag code={countryMap[event.src_ip]} />
                 {hostnameMap[event.src_ip] && (
                   <div className="hostline muted">{hostnameMap[event.src_ip]}</div>
                 )}
@@ -67,11 +64,7 @@ export function LogTable({ events, onSelect, interfaceMap = {}, ruleMap = {}, ho
                   {event.dst_ip}
                   {portLabel(event.dst_port)}
                 </span>
-                {countryMap[event.dst_ip] && (
-                  <span className="flag" title={countryMap[event.dst_ip]}>
-                    {flagEmoji(countryMap[event.dst_ip])}
-                  </span>
-                )}
+                <CountryFlag code={countryMap[event.dst_ip]} />
                 {hostnameMap[event.dst_ip] && (
                   <div className="hostline muted">{hostnameMap[event.dst_ip]}</div>
                 )}

@@ -1,4 +1,4 @@
-import { flagEmoji } from "../../format";
+import { CountryFlag } from "../CountryFlag";
 
 interface Props {
   value: string[];
@@ -25,7 +25,7 @@ export function CountryFilter({ value, options, onChange }: Props) {
             onClick={() => toggle(code)}
             title={code}
           >
-            {flagEmoji(code)} {code}
+            <CountryFlag code={code} /> {code}
           </button>
         ))}
       </div>
