@@ -125,6 +125,18 @@ CREATE TABLE IF NOT EXISTS hostname_cache (
     "hostname"   VARCHAR,
     "updated_at" TIMESTAMPTZ
 );
+
+CREATE TABLE IF NOT EXISTS alerts (
+    "id"         VARCHAR PRIMARY KEY,
+    "created_at" TIMESTAMPTZ,
+    "rule"       VARCHAR,
+    "severity"   VARCHAR,
+    "src_ip"     VARCHAR,
+    "title"      VARCHAR,
+    "message"    VARCHAR,
+    "details"    VARCHAR,
+    "notified"   BOOLEAN
+);
 """
 
 

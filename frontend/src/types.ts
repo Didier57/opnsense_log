@@ -91,3 +91,14 @@ export interface OpnsenseInterface {
   ipv4: string;
   ipv6: string;
 }
+
+export interface Alert {
+  id: string;
+  created_at: string;
+  rule: string;
+  severity: string;
+  src_ip: string;
+  title: string;
+  message: string;
+  details: Record<string, unknown>;
+}

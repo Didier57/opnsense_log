@@ -63,6 +63,20 @@ input, select {
   border-bottom: 1px solid var(--border);
 }
 .nav-group { padding: 10px 16px 4px; color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+button.nav-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+button.nav-group-toggle:hover { color: var(--text); }
+.nav-caret { display: inline-block; transition: transform 0.15s ease; font-size: 10px; }
+.nav-caret.open { transform: rotate(90deg); }
 .sidebar a.nav-link {
   display: block;
   padding: 7px 16px;

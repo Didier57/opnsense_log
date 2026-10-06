@@ -48,3 +48,26 @@ class ApplicationSettings(BaseModel):
     log_retention_days: int | None = Field(default=None, ge=0)
     retention_check_interval_min: int | None = Field(default=None, ge=5)
     display_timezone: str | None = None
+
+
+class DetectionSettings(BaseModel):
+    detection_enabled: bool | None = None
+    detection_interval_sec: int | None = Field(default=None, ge=15)
+    detection_portscan_ports: int | None = Field(default=None, ge=2)
+    detection_portscan_window_sec: int | None = Field(default=None, ge=5)
+    detection_bruteforce_count: int | None = Field(default=None, ge=2)
+    detection_bruteforce_window_sec: int | None = Field(default=None, ge=5)
+    detection_spike_threshold: int | None = Field(default=None, ge=1)
+    detection_spike_window_sec: int | None = Field(default=None, ge=5)
+
+
+class NotificationSettings(BaseModel):
+    smtp_enabled: bool | None = None
+    smtp_host: str | None = None
+    smtp_port: int | None = Field(default=None, ge=1, le=65535)
+    smtp_security: str | None = None
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_from_name: str | None = None
+    smtp_to: str | None = None

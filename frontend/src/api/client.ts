@@ -1,4 +1,5 @@
 import type {
+  Alert,
   FirewallEvent,
   OpnsenseInterface,
   OpnsenseRule,
@@ -133,6 +134,28 @@ export const api = {
     }),
   testOpnsense: () =>
     request<{ ok: boolean; message: string }>("/api/settings/opnsense/test", { method: "POST" }),
+
+  alerts: (limit = 200, offset = 0) =>
+    request<{ total: number; limit: number; offset: number; items: Alert[] }>(
+      `/api/alerts?limit=${limit}&offset=${offset}`,
+    ),
+  clearAlerts: () => request<{ ok: boolean; deleted: number }>("/api/alerts", { method: "DELETE" }),
+  runDetection: () =>
+    request<{ ok: boolean; created: number }>("/api/alerts/run", { method: "POST" }),
+  detectionSettings: () => request<Record<string, unknown>>("/api/settings/detection"),
+  updateDetection: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/settings/detection", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  notificationSettings: () => request<Record<string, unknown>>("/api/settings/notifications"),
+  updateNotifications: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/settings/notifications", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  testNotifications: () =>
+    request<{ ok: boolean; message: string }>("/api/settings/notifications/test", { method: "POST" }),
 
   exportUrl: (format: string) => `/api/export?fmt=${format}`,
   export: async (payload: SearchRequest, format: string): Promise<Blob> => {

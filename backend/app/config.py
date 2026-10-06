@@ -62,6 +62,27 @@ class Settings(BaseSettings):
     # --- Timezone ---
     # Timezone used to display timestamps in the UI.
     display_timezone: str = "Europe/Luxembourg"
+
+    # --- Detection engine ---
+    detection_enabled: bool = True
+    detection_interval_sec: int = 60
+    detection_portscan_ports: int = 20
+    detection_portscan_window_sec: int = 60
+    detection_bruteforce_count: int = 20
+    detection_bruteforce_window_sec: int = 120
+    detection_spike_threshold: int = 300
+    detection_spike_window_sec: int = 60
+
+    # --- Email notifications (SMTP) ---
+    smtp_enabled: bool = False
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_security: str = "starttls"  # none | ssl | starttls
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_from_name: str = "OPNsense Log Analyzer"
+    smtp_to: str = ""
     # Timezone in which OPNsense emits syslog timestamps (usually the firewall
     # local time). Naive incoming timestamps are interpreted in this timezone and
     # converted to UTC for storage. Empty means "use display_timezone".

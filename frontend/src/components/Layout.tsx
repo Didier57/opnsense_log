@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 import { useAuth } from "../auth";
@@ -24,6 +25,13 @@ const NAV: { group: string; links: { to: string; label: string }[] }[] = [
     ],
   },
   {
+    group: "Sécurité",
+    links: [
+      { to: "/security/alerts", label: "Alertes" },
+      { to: "/security/detection", label: "Détection" },
+    ],
+  },
+  {
     group: "OPNsense",
     links: [
       { to: "/opnsense/status", label: "État" },
@@ -35,6 +43,7 @@ const NAV: { group: string; links: { to: string; label: string }[] }[] = [
     group: "Paramètres",
     links: [
       { to: "/settings", label: "Application" },
+      { to: "/settings/notifications", label: "Notifications" },
       { to: "/settings/opnsense", label: "OPNsense" },
     ],
   },
@@ -44,23 +53,51 @@ const NAV: { group: string; links: { to: string; label: string }[] }[] = [
 export function Layout({ children }: { children: ReactNode }) {
   const { username, logout } = useAuth();
   const navigate = useNavigate();
+  // Sections start collapsed; the user expands the ones they need.
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+
+  const toggle = (group: string) => setOpen((prev) => ({ ...prev, [group]: !prev[group] }));
+
   return (
     <div className="layout">
       <aside className="sidebar">
         <h1>Analyseur de logs OPNsense</h1>
         {NAV.map((section) => (
           <div key={section.group || "root"}>
-            {section.group && <div className="nav-group">{section.group}</div>}
-            {section.links.map((link) => (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                end={link.to === "/"}
-                className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
-              >
-                {link.label}
-              </NavLink>
-            ))}
+            {section.group ? (
+              <>
+                <button
+                  type="button"
+                  className="nav-group nav-group-toggle"
+                  onClick={() => toggle(section.group)}
+                  aria-expanded={Boolean(open[section.group])}
+                >
+                  <span className={`nav-caret${open[section.group] ? " open" : ""}`}>▸</span>
+                  {section.group}
+                </button>
+                {open[section.group] &&
+                  section.links.map((link) => (
+                    <NavLink
+                      key={link.to}
+                      to={link.to}
+                      className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
+                    >
+                      {link.label}
+                    </NavLink>
+                  ))}
+              </>
+            ) : (
+              section.links.map((link) => (
+                <NavLink
+                  key={link.to}
+                  to={link.to}
+                  end={link.to === "/"}
+                  className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}
+                >
+                  {link.label}
+                </NavLink>
+              ))
+            )}
           </div>
         ))}
       </aside>
