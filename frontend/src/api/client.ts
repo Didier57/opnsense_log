@@ -114,6 +114,12 @@ export const api = {
   interfaces: () => request<{ items: OpnsenseInterface[] }>("/api/interfaces"),
 
   settings: () => request<Record<string, unknown>>("/api/settings"),
+  appSettings: () => request<Record<string, unknown>>("/api/settings/application"),
+  updateAppSettings: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/settings/application", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
   opnsenseSettings: () => request<Record<string, unknown>>("/api/settings/opnsense"),
   updateOpnsense: (payload: Record<string, unknown>) =>
     request<Record<string, unknown>>("/api/settings/opnsense", {

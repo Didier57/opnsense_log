@@ -42,3 +42,9 @@ class OPNsenseSettings(BaseModel):
     opnsense_key_path: str | None = None
     opnsense_sync_enabled: bool | None = None
     opnsense_sync_interval_min: int | None = None
+
+
+class ApplicationSettings(BaseModel):
+    log_retention_days: int | None = Field(default=None, ge=0)
+    retention_check_interval_min: int | None = Field(default=None, ge=5)
+    display_timezone: str | None = None

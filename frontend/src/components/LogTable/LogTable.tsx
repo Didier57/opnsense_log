@@ -1,5 +1,5 @@
 import type { FirewallEvent } from "../../types";
-import { actionClass, formatTime, portLabel } from "../../format";
+import { actionClass, formatDateTime, portLabel } from "../../format";
 
 interface Props {
   events: FirewallEvent[];
@@ -44,7 +44,7 @@ export function LogTable({ events, onSelect, interfaceMap = {}, ruleMap = {} }: 
               <td>
                 <span className="badge other">{directionLabel(event.direction)}</span>
               </td>
-              <td className="mono">{formatTime(event.event_time)}</td>
+              <td className="mono">{formatDateTime(event.event_time)}</td>
               <td>{event.protocol}</td>
               <td className="mono" title={`${event.src_ip}${portLabel(event.src_port)}`}>
                 <span className="truncate">

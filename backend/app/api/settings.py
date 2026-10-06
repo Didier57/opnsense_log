@@ -6,14 +6,16 @@ from fastapi import APIRouter, Depends
 from ..config import settings
 from ..opnsense.settings_store import get_opnsense_settings, update_opnsense_settings
 from ..opnsense.ssh import OPNsenseSSH
+from ..settings_store import get_app_settings, update_app_settings
 from .deps import require_user
-from .schemas import OPNsenseSettings
+from .schemas import ApplicationSettings, OPNsenseSettings
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
 @router.get("")
 def get_settings(user: str = Depends(require_user)) -> dict:
+    app_cfg = get_app_settings()
     return {
         "syslog": {
             "port": settings.syslog_port,
@@ -23,16 +25,28 @@ def get_settings(user: str = Depends(require_user)) -> dict:
         },
         "storage": {
             "data_dir": settings.data_dir,
-            "retention_days": settings.log_retention_days,
+            "retention_days": app_cfg["log_retention_days"],
             "batch_size": settings.batch_size,
         },
         "application": {
             "auth_enabled": settings.auth_enabled,
-            "display_timezone": settings.display_timezone,
+            "display_timezone": app_cfg["display_timezone"],
             "log_level": settings.log_level,
+            "retention_check_interval_min": app_cfg["retention_check_interval_min"],
         },
         "opnsense": get_opnsense_settings(mask_password=True),
     }
+
+
+@router.get("/application")
+def get_application(user: str = Depends(require_user)) -> dict:
+    return get_app_settings()
+
+
+@router.put("/application")
+def put_application(payload: ApplicationSettings, user: str = Depends(require_user)) -> dict:
+    return update_app_settings(payload.model_dump(exclude_none=True))
+
 
 
 @router.get("/opnsense")
