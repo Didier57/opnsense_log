@@ -11,6 +11,7 @@ from collections.abc import Iterator
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
+from ..geoip.resolver import geo_resolver
 from ..storage.database import _EVENT_COLUMNS, get_database
 from ..storage.repository import EventRepository
 from .deps import require_user
@@ -23,9 +24,34 @@ _QUOTED_COLS = ", ".join(f'"{c}"' for c in _EVENT_COLUMNS)
 _CHUNK = 5000
 
 
-def _iter_rows(payload: SearchRequest) -> Iterator[list]:
+def _country_ips(payload: SearchRequest) -> list[str] | None:
+    if not payload.countries:
+        return None
+    wanted = {code.strip().upper() for code in payload.countries if code.strip()}
+    if not wanted:
+        return None
+    candidates = set(repo.distinct_ips("src_ip", payload.start, payload.end))
+    candidates.update(repo.distinct_ips("dst_ip", payload.start, payload.end))
+    resolved = geo_resolver.resolve(list(candidates))
+    return [ip for ip, info in resolved.items() if info and str(info.get("country", "")).upper() in wanted]
+
+
+def _where_for(payload: SearchRequest) -> tuple[str, list]:
     clauses = [c.model_dump() for c in payload.clauses]
     where, params = repo.build_where(clauses, payload.logic, payload.start, payload.end)
+    country_ips = _country_ips(payload)
+    if country_ips is not None:
+        if not country_ips:
+            where += (" AND " if where else " WHERE ") + "1 = 0"
+        else:
+            marks = ", ".join("?" for _ in country_ips)
+            where += (" AND " if where else " WHERE ") + f'("src_ip" IN ({marks}) OR "dst_ip" IN ({marks}))'
+            params = [*params, *country_ips, *country_ips]
+    return where, params
+
+
+def _iter_rows(payload: SearchRequest) -> Iterator[list]:
+    where, params = _where_for(payload)
     db = get_database()
     offset = 0
     while True:
@@ -85,8 +111,7 @@ def export(payload: SearchRequest, fmt: str = "csv", user: str = Depends(require
             headers={"Content-Disposition": 'attachment; filename="events.json"'},
         )
     if fmt == "parquet":
-        clauses = [c.model_dump() for c in payload.clauses]
-        where, params = repo.build_where(clauses, payload.logic, payload.start, payload.end)
+        where, params = _where_for(payload)
         out = tempfile.NamedTemporaryFile(delete=False, suffix=".parquet")
         out.close()
         db = get_database()

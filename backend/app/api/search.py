@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from ..geoip.resolver import geo_resolver
 from ..storage.repository import EventRepository
 from .deps import require_user
 from .schemas import SearchRequest
@@ -14,6 +15,17 @@ repo = EventRepository()
 @router.post("")
 def search(payload: SearchRequest, user: str = Depends(require_user)) -> dict:
     clauses = [c.model_dump() for c in payload.clauses]
+    country_ips: list[str] | None = None
+    if payload.countries:
+        wanted = {code.strip().upper() for code in payload.countries if code.strip()}
+        candidates = set(repo.distinct_ips("src_ip", payload.start, payload.end))
+        candidates.update(repo.distinct_ips("dst_ip", payload.start, payload.end))
+        resolved = geo_resolver.resolve(list(candidates))
+        country_ips = [
+            ip
+            for ip, info in resolved.items()
+            if info and str(info.get("country", "")).upper() in wanted
+        ]
     try:
         return repo.search(
             clauses=clauses,
@@ -24,6 +36,7 @@ def search(payload: SearchRequest, user: str = Depends(require_user)) -> dict:
             offset=payload.offset,
             order_by=payload.order_by,
             order_dir=payload.order_dir,
+            country_ips=country_ips,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

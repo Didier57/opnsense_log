@@ -32,3 +32,14 @@ export function toLocalInput(date: Date): string {
 export function portLabel(port: number | null | undefined): string {
   return port === null || port === undefined ? "" : `:${port}`;
 }
+
+const REGIONAL_BASE = 0x1f1e6;
+
+export function flagEmoji(code: string | null | undefined): string {
+  if (!code || code.length !== 2) return "";
+  const upper = code.toUpperCase();
+  const a = upper.charCodeAt(0);
+  const b = upper.charCodeAt(1);
+  if (a < 65 || a > 90 || b < 65 || b > 90) return "";
+  return String.fromCodePoint(REGIONAL_BASE + (a - 65), REGIONAL_BASE + (b - 65));
+}

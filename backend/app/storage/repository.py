@@ -154,6 +154,7 @@ class EventRepository:
         offset: int = 0,
         order_by: str = "event_time",
         order_dir: str = "desc",
+        country_ips: list[str] | None = None,
     ) -> dict:
         limit = max(1, min(limit, 5000))
         offset = max(0, offset)
@@ -161,6 +162,15 @@ class EventRepository:
         order_dir = "ASC" if order_dir.lower() == "asc" else "DESC"
 
         where, params = self.build_where(clauses, logic, start, end)
+        if country_ips is not None:
+            if not country_ips:
+                where += (" AND " if where else " WHERE ") + "1 = 0"
+            else:
+                marks = ", ".join("?" for _ in country_ips)
+                where += (" AND " if where else " WHERE ") + (
+                    f'("src_ip" IN ({marks}) OR "dst_ip" IN ({marks}))'
+                )
+                params = [*params, *country_ips, *country_ips]
         total = self.db.execute_read(
             f"SELECT COUNT(*) FROM events{where}", params
         ).fetchone()[0]
@@ -171,6 +181,23 @@ class EventRepository:
         ).fetchall()
         events = [dict(zip(_EVENT_COLUMNS, row)) for row in rows]
         return {"total": total, "limit": limit, "offset": offset, "events": events}
+
+    def distinct_ips(
+        self,
+        column: str = "src_ip",
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 50000,
+    ) -> list[str]:
+        col = FILTER_FIELDS.get(column)
+        if col is None:
+            raise ValueError(f"invalid ip column: {column}")
+        where, params = self.build_where(None, start=start, end=end)
+        rows = self.db.execute_read(
+            f"SELECT DISTINCT {col} FROM events{where} LIMIT ?",
+            [*params, max(1, limit)],
+        ).fetchall()
+        return [row[0] for row in rows if row[0]]
 
     # ------------------------------------------------------------- statistics
     def summary(self, start: datetime | None = None, end: datetime | None = None) -> dict:

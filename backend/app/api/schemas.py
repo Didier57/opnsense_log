@@ -26,6 +26,7 @@ class SearchRequest(BaseModel):
     offset: int = 0
     order_by: str = "event_time"
     order_dir: str = "desc"
+    countries: list[str] | None = None
 
 
 class SavedFilterCreate(BaseModel):

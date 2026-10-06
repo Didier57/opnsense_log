@@ -30,12 +30,13 @@ export interface SearchClause {
 export interface SearchRequest {
   clauses: SearchClause[];
   logic: string;
-  start?: string | null;
-  end?: string | null;
+  start?: string;
+  end?: string;
   limit?: number;
   offset?: number;
   order_by?: string;
   order_dir?: string;
+  countries?: string[];
 }
 
 export interface SearchResult {

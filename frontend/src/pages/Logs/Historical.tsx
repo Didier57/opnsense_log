@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, downloadBlob } from "../../api/client";
 import { LogTable } from "../../components/LogTable/LogTable";
 import { EventDetails } from "../../components/EventDetails/EventDetails";
 import { QuickFilters } from "../../components/Filters/QuickFilters";
 import { AdvancedFilters } from "../../components/Filters/AdvancedFilters";
+import { CountryFilter } from "../../components/Filters/CountryFilter";
 import { TimeRangePicker } from "../../components/TimeRangePicker";
 import { useInterfaceMap } from "../../hooks/useInterfaceMap";
 import { useRuleMap } from "../../hooks/useRuleMap";
@@ -21,10 +22,18 @@ export function Historical() {
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<FirewallEvent | null>(null);
   const [filterName, setFilterName] = useState("");
+  const [countries, setCountries] = useState<string[]>([]);
+  const [countryOptions, setCountryOptions] = useState<string[]>([]);
+  const [countryMap, setCountryMap] = useState<Record<string, string>>({});
   const interfaceMap = useInterfaceMap();
   const ruleMap = useRuleMap();
 
-  const run = async (nextOffset = 0, overrideClauses = clauses, overrideLogic = logic) => {
+  const run = async (
+    nextOffset = 0,
+    overrideClauses = clauses,
+    overrideLogic = logic,
+    overrideCountries = countries,
+  ) => {
     setLoading(true);
     try {
       const res = await api.search({
@@ -34,6 +43,7 @@ export function Historical() {
         end: range.end,
         limit: PAGE_SIZE,
         offset: nextOffset,
+        countries: overrideCountries.length ? overrideCountries : undefined,
       });
       setResult(res);
       setOffset(nextOffset);
@@ -41,6 +51,37 @@ export function Historical() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    api
+      .countries(range.start, range.end, 50)
+      .then((res) => setCountryOptions(res.items.map((item) => item.value)))
+      .catch(() => setCountryOptions([]));
+  }, [range.start, range.end]);
+
+  useEffect(() => {
+    const events = result?.events ?? [];
+    if (events.length === 0) {
+      setCountryMap({});
+      return;
+    }
+    const ips = Array.from(new Set(events.flatMap((e) => [e.src_ip, e.dst_ip]).filter(Boolean)));
+    let cancelled = false;
+    api
+      .geoLookup(ips)
+      .then((res) => {
+        if (cancelled) return;
+        const map: Record<string, string> = {};
+        Object.entries(res.items).forEach(([ip, info]) => {
+          if (info) map[ip] = info.country;
+        });
+        setCountryMap(map);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [result]);
 
   const updateClauses = (next: SearchClause[]) => {
     setClauses(next);
@@ -91,6 +132,14 @@ export function Historical() {
         }}
         onChange={updateClauses}
       />
+      <CountryFilter
+        value={countries}
+        options={countryOptions}
+        onChange={(next) => {
+          setCountries(next);
+          run(0, clauses, logic, next);
+        }}
+      />
       <div className="panel filters">
         <button className="active" onClick={() => run(0)} disabled={loading}>
           {loading ? "Recherche…" : "Rechercher"}
@@ -113,7 +162,13 @@ export function Historical() {
         <p className="muted">
           Affichage de {result ? formatNumber(result.events.length) : 0} sur {formatNumber(total)} événements
         </p>
-        <LogTable events={result?.events ?? []} onSelect={setSelected} interfaceMap={interfaceMap} ruleMap={ruleMap} />
+        <LogTable
+          events={result?.events ?? []}
+          onSelect={setSelected}
+          interfaceMap={interfaceMap}
+          ruleMap={ruleMap}
+          countryMap={countryMap}
+        />
         <div className="filters" style={{ marginTop: 12 }}>
           <button onClick={() => run(0)} disabled={offset === 0}>
             Premier

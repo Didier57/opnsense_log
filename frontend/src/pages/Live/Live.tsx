@@ -4,6 +4,7 @@ import { LogTable } from "../../components/LogTable/LogTable";
 import { EventDetails } from "../../components/EventDetails/EventDetails";
 import { QuickFilters, QUICK_FILTERS } from "../../components/Filters/QuickFilters";
 import { AdvancedFilters } from "../../components/Filters/AdvancedFilters";
+import { CountryFilter } from "../../components/Filters/CountryFilter";
 import { useInterfaceMap } from "../../hooks/useInterfaceMap";
 import { useInterfaces, findInterfaceDevice } from "../../hooks/useInterfaces";
 import { useRuleMap } from "../../hooks/useRuleMap";
@@ -24,6 +25,7 @@ export function Live() {
   const [hostnameMap, setHostnameMap] = useState<Record<string, string>>({});
   const [countriesEnabled, setCountriesEnabled] = useState(false);
   const [countryMap, setCountryMap] = useState<Record<string, string>>({});
+  const [countryFilter, setCountryFilter] = useState<string[]>([]);
 
   const pausedRef = useRef(paused);
   const limitRef = useRef(limit);
@@ -98,11 +100,20 @@ export function Live() {
     };
   }, []);
 
-  const events = useMemo(
-    () => raw.filter((event) => eventMatches(event, clauses, logic)),
-    [raw, clauses, logic],
-  );
+  const events = useMemo(() => {
+    const filtered = raw.filter((event) => eventMatches(event, clauses, logic));
+    if (countryFilter.length === 0) return filtered;
+    const wanted = new Set(countryFilter);
+    return filtered.filter(
+      (event) => wanted.has(countryMap[event.src_ip]) || wanted.has(countryMap[event.dst_ip]),
+    );
+  }, [raw, clauses, logic, countryFilter, countryMap]);
   eventsRef.current = events;
+
+  const countryOptions = useMemo(
+    () => [...new Set(Object.values(countryMap))].filter(Boolean).sort(),
+    [countryMap],
+  );
 
   // Resolve hostnames for the currently displayed IPs, at a slow pace and only
   // for IPs we have not seen yet, so the background lookups never compete with
@@ -136,7 +147,7 @@ export function Live() {
 
   // Resolve the country of public IPs at a slow pace, only for IPs not yet seen.
   useEffect(() => {
-    if (!countriesEnabled) return;
+    if (!countriesEnabled && countryFilter.length === 0) return;
     const timer = window.setInterval(() => {
       const known = countryMapRef.current;
       const ips = new Set<string>();
@@ -151,7 +162,7 @@ export function Live() {
         .then((res) => {
           const found: Record<string, string> = {};
           Object.entries(res.items).forEach(([ip, info]) => {
-            if (info) found[ip] = `${info.name} (${info.country})`;
+            if (info) found[ip] = info.country;
           });
           if (Object.keys(found).length > 0) {
             setCountryMap((prev) => ({ ...prev, ...found }));
@@ -160,7 +171,7 @@ export function Live() {
         .catch(() => undefined);
     }, 3000);
     return () => window.clearInterval(timer);
-  }, [countriesEnabled]);
+  }, [countriesEnabled, countryFilter]);
 
   const clearAll = () => {
     setClauses([]);
@@ -214,6 +225,7 @@ export function Live() {
         onLogicChange={setLogic}
         onChange={setClauses}
       />
+      <CountryFilter value={countryFilter} options={countryOptions} onChange={setCountryFilter} />
 
       <div className="panel">
         <p className="muted">
