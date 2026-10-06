@@ -33,6 +33,12 @@ historical search, a Live View and optional OPNsense configuration synchronisati
 - **Saved filters**, pagination, event details.
 - **Monitoring & internal logging** with a System → Status page
   (received / parsed / invalid / events-per-second) and a System → Logs page.
+- **Security detection & alerts**: a background engine (independent of the UI) detecting
+  port scans, brute force and (opt-in) traffic spikes. Alerts are listed under
+  **Security → Alerts** and can be sent by e-mail (SMTP). Settings are managed from the
+  web UI (Security → Detection, Settings → Notifications).
+- **Hostname lookup**: reverse DNS plus local names from the firewall's DHCP leases
+  (ISC / Kea / Dnsmasq) fetched over SSH.
 - **Authentication** (local, hashed with Argon2) with JWT tokens.
 - **Dockerized** single image serving both the API and the frontend, with a healthcheck.
 
@@ -54,7 +60,9 @@ backend/
     parser/      filterlog / RFC3164 / RFC5424 / custom parsers
     storage/     DuckDB database, repository, retention
     syslog/      UDP/TCP syslog server with queue + batch workers
-    opnsense/    SSH client, config.xml loader, sync, settings store
+    opnsense/    SSH client, config.xml loader, DHCP leases, sync, settings store
+    detection/   port-scan / brute-force / spike detectors, alerts store
+    notifications/ SMTP e-mail notifications
     websocket/   Live hub
     core/        logging, counters, security
     main.py      FastAPI app + lifespan
@@ -170,10 +178,18 @@ missing fields, invalid lines), RFC3164/RFC5424 parsing, repository search
 
 ## Roadmap
 
-- **V2** — advanced statistics, rule change detection, aliases, geolocation, reverse DNS,
-  Excel export, alerts, notifications, webhooks, full API, multi-OPNsense, multi-user,
-  LDAP/OIDC.
-- **V3** — detection engine: port scans, brute force, traffic spikes, anomalies, IP alerts,
+Already implemented beyond V1:
+
+- **Detection engine** — port scans, brute force and (opt-in) traffic spikes, with an alert
+  list and e-mail (SMTP) notifications.
+- **Hostname lookup** — reverse DNS and DHCP/Dnsmasq lease names.
+- **Rule change history**.
+
+Still planned:
+
+- **V2** — advanced statistics, aliases, geolocation, Excel export, webhooks, full documented
+  API, multi-OPNsense, multi-user, LDAP/OIDC.
+- **V3** — richer detection: anomaly detection, IP / threat-intelligence alerts and event
   correlation.
 
 ## License
