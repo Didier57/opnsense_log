@@ -8,7 +8,13 @@ from datetime import datetime, timezone
 
 from ..storage.database import Database, get_database
 from .config_loader import parse_config, parse_rules_debug
-from .dhcp import fetch_script as dhcp_fetch_script, parse_dhcp_leases
+from .dhcp import (
+    discover_script as dhcp_discover_script,
+    fetch_script as dhcp_fetch_script,
+    parse_dhcp_leases,
+    parse_discovered_paths,
+    static_lease_paths,
+)
 from .settings_store import get_opnsense_settings
 from .ssh import OPNsenseSSH, SSHError
 
@@ -22,6 +28,7 @@ class OPNSenseSync:
     def __init__(self, db: Database | None = None, ssh: OPNsenseSSH | None = None) -> None:
         self.db = db or get_database()
         self.ssh = ssh or self._build_ssh()
+        self.lease_paths: list[str] = []
 
     @staticmethod
     def _build_ssh() -> OPNsenseSSH:
@@ -43,8 +50,23 @@ class OPNSenseSync:
         return self.ssh.run(f"cat {RULES_DEBUG_PATH}")
 
     def fetch_dhcp_leases(self) -> str:
-        """Fetch the DHCP lease files (ISC dhcpd and/or Kea)."""
-        return self.ssh.run(dhcp_fetch_script())
+        """Fetch the DHCP lease files (ISC, Kea and/or Dnsmasq).
+
+        The lease file location depends on the DHCP service in use, so the
+        actual paths are discovered on the firewall first (dnsmasq config
+        directive + a filesystem scan) and merged with the known defaults.
+        """
+        paths = list(static_lease_paths())
+        try:
+            discovered = parse_discovered_paths(self.ssh.run(dhcp_discover_script()))
+            for path in discovered:
+                if path not in paths:
+                    paths.append(path)
+        except SSHError as exc:
+            logger.warning("DHCP lease discovery failed: %s", exc)
+        logger.info("Fetching DHCP leases from: %s", ", ".join(paths))
+        self.lease_paths = paths
+        return self.ssh.run(dhcp_fetch_script(paths))
 
     def sync(self) -> dict:
         """Fetch config over SSH and persist interfaces and rules.
@@ -101,6 +123,12 @@ class OPNSenseSync:
         except Exception:  # noqa: BLE001
             logger.exception("Failed to parse DHCP leases")
 
+        if not leases:
+            logger.warning(
+                "No DHCP leases found; verify SSH access and that the DHCP "
+                "lease file exists on the firewall"
+            )
+
         now = datetime.now(timezone.utc)
         try:
             self._store_interfaces(interfaces, now)
@@ -119,6 +147,7 @@ class OPNSenseSync:
             "interfaces": len(interfaces),
             "rules": len(rules),
             "leases": len(leases),
+            "lease_paths": self.lease_paths,
             "synced_at": now.isoformat(),
         }
 

@@ -1,7 +1,7 @@
 """Tests for DHCP lease parsing (ISC and Kea) and resolver integration."""
 import pytest
 
-from app.opnsense.dhcp import parse_dhcp_leases
+from app.opnsense.dhcp import parse_dhcp_leases, parse_discovered_paths
 from app.storage.database import Database
 import app.core.hostnames as hn
 
@@ -94,3 +94,16 @@ def test_resolver_prefers_dhcp_lease(tmp_path, monkeypatch):
     out = resolver.resolve(["192.168.1.100"])
     assert out == {"192.168.1.100": "laptop"}
     database.close()
+
+
+def test_parse_discovered_paths():
+    text = (
+        "/var/db/dnsmasq.leases\n"
+        "/var/db/dnsmasq.leases\n"
+        "not-a-path\n"
+        "/var/db/kea/kea-leases4.csv\n"
+    )
+    assert parse_discovered_paths(text) == [
+        "/var/db/dnsmasq.leases",
+        "/var/db/kea/kea-leases4.csv",
+    ]

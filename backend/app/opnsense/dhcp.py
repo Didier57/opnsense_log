@@ -20,16 +20,54 @@ _LEASE_PATHS = [
     "/var/db/kea/kea-leases6.csv",
     "/var/db/dnsmasq.leases",
     "/var/db/dnsmasq.leases6",
+    "/var/db/dnsmasq/dnsmasq.leases",
 ]
+
+# Files whose `dhcp-leasefile` directive reveals the Dnsmasq lease path.
+_DISCOVER_CONFIGS = (
+    "/usr/local/etc/dnsmasq.conf "
+    "/usr/local/etc/dnsmasq.conf.d "
+    "/var/etc/dnsmasq.conf "
+    "/var/etc/dnsmasq.conf.d "
+    "/var/etc/dnsmasq-hosts"
+)
+# Directories scanned for any lease/CSV files as a fallback.
+_DISCOVER_DIRS = "/var/db /var/run /var/dhcpd /var/db/kea /var/etc"
 
 _BLOCK_RE = re.compile(r"^(lease|ia-na|ia-pd|iaaddr|ia-ta|host)\s+(\S+)\s*\{")
 _HOSTNAME_RE = re.compile(r'client-hostname\s+"([^"]*)"')
 _MAC_RE = re.compile(r"hardware ethernet\s+([0-9a-fA-F:]+)")
 
 
-def fetch_script() -> str:
-    """Build the remote shell command that dumps all lease files."""
-    parts = [f'echo "###{path}"; cat "{path}" 2>/dev/null' for path in _LEASE_PATHS]
+def static_lease_paths() -> list[str]:
+    return list(_LEASE_PATHS)
+
+
+def discover_script() -> str:
+    """Remote command that prints candidate lease file paths, one per line."""
+    return (
+        "grep -rhoE 'dhcp-leasefile=[^[:space:]]+' "
+        f"{_DISCOVER_CONFIGS} 2>/dev/null | "
+        "sed -e 's/^dhcp-leasefile=//' -e 's/\"//g'; "
+        f"find {_DISCOVER_DIRS} -maxdepth 3 "
+        "\\( -name '*.leases' -o -name 'kea-leases*.csv' \\) -type f 2>/dev/null"
+    )
+
+
+def parse_discovered_paths(text: str) -> list[str]:
+    """Extract absolute lease file paths from discover_script() output."""
+    paths: list[str] = []
+    for raw in text.splitlines():
+        path = raw.strip().strip('"')
+        if path.startswith("/") and path not in paths:
+            paths.append(path)
+    return paths
+
+
+def fetch_script(paths: list[str] | None = None) -> str:
+    """Build the remote shell command that dumps the given lease files."""
+    targets = paths or _LEASE_PATHS
+    parts = [f'echo "###{path}"; cat "{path}" 2>/dev/null' for path in targets]
     return "; ".join(parts)
 
 

@@ -7,6 +7,7 @@ interface SyncResult {
   interfaces?: number;
   rules?: number;
   leases?: number;
+  lease_paths?: string[];
 }
 
 export function SyncButton({ onDone }: { onDone?: () => void }) {
@@ -38,9 +39,11 @@ export function SyncButton({ onDone }: { onDone?: () => void }) {
       const result = (await api.syncRules()) as SyncResult;
       if (result.ok) {
         setOk(true);
-        setMessage(
-          `Synchronisé : ${result.interfaces ?? 0} interfaces, ${result.rules ?? 0} règles, ${result.leases ?? 0} baux DHCP`,
-        );
+        let text = `Synchronisé : ${result.interfaces ?? 0} interfaces, ${result.rules ?? 0} règles, ${result.leases ?? 0} baux DHCP`;
+        if ((result.leases ?? 0) === 0 && result.lease_paths?.length) {
+          text += ` (chemins testés : ${result.lease_paths.join(", ")})`;
+        }
+        setMessage(text);
       } else {
         setOk(false);
         setMessage(`Échec : ${result.error ?? "erreur inconnue"}`);
