@@ -16,8 +16,9 @@ _INT_KEYS = [
     "detection_bruteforce_window_sec",
     "detection_spike_threshold",
     "detection_spike_window_sec",
+    "detection_notify_cooldown_min",
 ]
-_BOOL_KEYS = ["detection_enabled", "detection_ignore_private"]
+_BOOL_KEYS = ["detection_enabled", "detection_ignore_private", "detection_spike_enabled"]
 _KEYS = _BOOL_KEYS + _INT_KEYS
 
 # (key, minimum) so a user cannot disable detection by entering an absurd value.
@@ -29,6 +30,7 @@ _MINIMUMS = {
     "detection_bruteforce_window_sec": 5,
     "detection_spike_threshold": 1,
     "detection_spike_window_sec": 5,
+    "detection_notify_cooldown_min": 0,
 }
 
 

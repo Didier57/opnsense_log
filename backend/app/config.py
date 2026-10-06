@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     detection_bruteforce_window_sec: int = 120
     detection_spike_threshold: int = 300
     detection_spike_window_sec: int = 60
+    # Traffic-spike alerts are noisy and off by default.
+    detection_spike_enabled: bool = False
+    # Minimum delay before e-mailing about the same (rule, source IP) again.
+    # Persisted in the database, so it also suppresses duplicates after a restart.
+    detection_notify_cooldown_min: int = 60
 
     # --- Email notifications (SMTP) ---
     smtp_enabled: bool = False

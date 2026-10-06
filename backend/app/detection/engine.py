@@ -12,7 +12,9 @@ import ipaddress
 import json
 import logging
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
+from ..config import settings
 from ..notifications.mailer import send_email
 from ..notifications.store import get_smtp_settings
 from ..storage.database import get_database
@@ -21,6 +23,12 @@ from .store import get_detection_settings
 logger = logging.getLogger("opnsense.detection")
 
 _MAX_PER_RULE = 25
+
+# Events older than the moment the process started are ignored during the very
+# first detection cycle, so a restart does not re-notify about a backlog the
+# previous run already reported.
+_STARTED_AT = datetime.now(timezone.utc)
+_first_cycle = True
 
 
 def _rows(sql: str, params: list) -> list[tuple]:
@@ -47,12 +55,42 @@ def _skip_source(cfg: dict, src_ip: str) -> bool:
     return bool(cfg.get("detection_ignore_private", True)) and _is_internal(src_ip)
 
 
-def _detect_port_scan(cfg: dict) -> list[dict]:
-    window = cfg["detection_portscan_window_sec"]
+def _window_start(window: int, floor: datetime | None) -> datetime:
+    """Start of the detection window, never earlier than ``floor`` if set."""
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=window)
+    if floor is not None and floor > cutoff:
+        return floor
+    return cutoff
+
+
+def _iso(value: datetime | None) -> str | None:
+    """UTC ISO string for JSON storage (``None`` when unavailable)."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat()
+
+
+def _fmt_time(value: datetime | None) -> str:
+    """Human readable event time in the configured display timezone."""
+    if value is None:
+        return "date inconnue"
+    try:
+        tz = ZoneInfo(settings.display_timezone or "UTC")
+    except Exception:  # noqa: BLE001
+        tz = timezone.utc
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(tz).strftime("%d/%m/%Y %H:%M:%S")
+
+
+def _detect_port_scan(cfg: dict, floor: datetime | None = None) -> list[dict]:
+    window = cfg["detection_portscan_window_sec"]
+    cutoff = _window_start(window, floor)
     rows = _rows(
         """
-        SELECT "src_ip", COUNT(DISTINCT "dst_port") AS ports
+        SELECT "src_ip", COUNT(DISTINCT "dst_port") AS ports, MAX("event_time") AS last_seen
         FROM events
         WHERE "event_time" >= ? AND "src_ip" <> '' AND "dst_port" IS NOT NULL
         GROUP BY 1
@@ -64,7 +102,7 @@ def _detect_port_scan(cfg: dict) -> list[dict]:
     )
     bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
     alerts = []
-    for src_ip, ports in rows:
+    for src_ip, ports, last_seen in rows:
         if _skip_source(cfg, src_ip):
             continue
         alerts.append(
@@ -73,20 +111,21 @@ def _detect_port_scan(cfg: dict) -> list[dict]:
                 "rule": "port_scan",
                 "severity": "warning",
                 "src_ip": src_ip,
+                "event_time": last_seen,
                 "title": "Scan de ports détecté",
                 "message": f"{src_ip} a contacté {ports} ports distincts en {window}s",
-                "details": {"ports": ports, "window_sec": window},
+                "details": {"ports": ports, "window_sec": window, "event_time": _iso(last_seen)},
             }
         )
     return alerts
 
 
-def _detect_bruteforce(cfg: dict) -> list[dict]:
+def _detect_bruteforce(cfg: dict, floor: datetime | None = None) -> list[dict]:
     window = cfg["detection_bruteforce_window_sec"]
-    cutoff = datetime.now(timezone.utc) - timedelta(seconds=window)
+    cutoff = _window_start(window, floor)
     rows = _rows(
         """
-        SELECT "src_ip", COUNT(*) AS attempts
+        SELECT "src_ip", COUNT(*) AS attempts, MAX("event_time") AS last_seen
         FROM events
         WHERE "event_time" >= ? AND "src_ip" <> ''
               AND lower("action") IN ('block', 'reject')
@@ -99,7 +138,7 @@ def _detect_bruteforce(cfg: dict) -> list[dict]:
     )
     bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
     alerts = []
-    for src_ip, attempts in rows:
+    for src_ip, attempts, last_seen in rows:
         if _skip_source(cfg, src_ip):
             continue
         alerts.append(
@@ -108,18 +147,22 @@ def _detect_bruteforce(cfg: dict) -> list[dict]:
                 "rule": "bruteforce",
                 "severity": "critical",
                 "src_ip": src_ip,
+                "event_time": last_seen,
                 "title": "Tentatives répétées bloquées",
                 "message": f"{src_ip} a été bloqué {attempts} fois en {window}s",
-                "details": {"attempts": attempts, "window_sec": window},
+                "details": {"attempts": attempts, "window_sec": window, "event_time": _iso(last_seen)},
             }
         )
     return alerts
 
 
-def _detect_spike(cfg: dict) -> list[dict]:
+def _detect_spike(cfg: dict, floor: datetime | None = None) -> list[dict]:
+    if not cfg.get("detection_spike_enabled", False):
+        return []
     window = cfg["detection_spike_window_sec"]
-    cutoff = datetime.now(timezone.utc) - timedelta(seconds=window)
-    total = _rows("SELECT COUNT(*) FROM events WHERE \"event_time\" >= ?", [cutoff])[0][0]
+    cutoff = _window_start(window, floor)
+    row = _rows('SELECT COUNT(*), MAX("event_time") FROM events WHERE "event_time" >= ?', [cutoff])[0]
+    total, last_seen = row[0], row[1]
     if total < cfg["detection_spike_threshold"]:
         return []
     bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
@@ -129,9 +172,10 @@ def _detect_spike(cfg: dict) -> list[dict]:
             "rule": "traffic_spike",
             "severity": "warning",
             "src_ip": "",
+            "event_time": last_seen,
             "title": "Pic de trafic",
             "message": f"{total} événements en {window}s (seuil {cfg['detection_spike_threshold']})",
-            "details": {"total": total, "window_sec": window},
+            "details": {"total": total, "window_sec": window, "event_time": _iso(last_seen)},
         }
     ]
 
@@ -163,14 +207,19 @@ def _store_alert(alert: dict) -> None:
 
 def run_cycle() -> list[dict]:
     """Run every detection rule once and persist new alerts. Returns the new ones."""
+    global _first_cycle
     cfg = get_detection_settings()
     if not cfg["detection_enabled"]:
         return []
 
+    # On the first cycle after startup ignore pre-boot events.
+    floor = _STARTED_AT if _first_cycle else None
+    _first_cycle = False
+
     candidates: list[dict] = []
     for detector in (_detect_port_scan, _detect_bruteforce, _detect_spike):
         try:
-            candidates.extend(detector(cfg))
+            candidates.extend(detector(cfg, floor))
         except Exception:  # noqa: BLE001
             logger.exception("Detection rule failed: %s", detector.__name__)
 
@@ -184,22 +233,55 @@ def run_cycle() -> list[dict]:
 
     if new_alerts:
         logger.info("Detection raised %d new alert(s)", len(new_alerts))
-        _notify(new_alerts)
+        _notify(new_alerts, cfg)
     return new_alerts
 
 
-def _notify(alerts: list[dict]) -> None:
+def _recently_notified(rule: str, src_ip: str, cutoff: datetime) -> bool:
+    rows = _rows(
+        'SELECT 1 FROM alerts WHERE "rule" = ? AND "src_ip" = ? AND "notified" = TRUE '
+        'AND "created_at" >= ? LIMIT 1',
+        [rule, src_ip, cutoff],
+    )
+    return bool(rows)
+
+
+def _mark_notified(ids: list[str]) -> None:
+    if not ids:
+        return
+    marks = ", ".join("?" for _ in ids)
+    get_database().execute_write(f'UPDATE alerts SET "notified" = TRUE WHERE "id" IN ({marks})', list(ids))
+
+
+def _notify(alerts: list[dict], cfg: dict) -> None:
     try:
         smtp = get_smtp_settings(mask_password=False)
     except Exception:  # noqa: BLE001
         return
     if not smtp.get("smtp_enabled"):
         return
-    lines = [f"- [{a['severity']}] {a['title']} : {a['message']}" for a in alerts]
-    subject = f"[OPNsense Log Analyzer] {len(alerts)} alerte(s) de sécurité"
+
+    cooldown_min = int(cfg.get("detection_notify_cooldown_min", 60) or 0)
+    to_send = alerts
+    if cooldown_min > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=cooldown_min)
+        to_send = [a for a in alerts if not _recently_notified(a["rule"], a["src_ip"], cutoff)]
+        if not to_send:
+            logger.info("E-mail notification suppressed by cooldown (%d alert(s))", len(alerts))
+            return
+
+    lines = [
+        f"- [{a['severity']}] {_fmt_time(a.get('event_time'))} — {a['title']} : {a['message']}" for a in to_send
+    ]
+    subject = f"[OPNsense Log Analyzer] {len(to_send)} alerte(s) de sécurité"
     body = "Nouvelles alertes détectées :\n\n" + "\n".join(lines) + "\n\n-- Analyseur de logs OPNsense"
     result = send_email(subject, body, smtp)
-    if not result.get("ok"):
+    if result.get("ok"):
+        try:
+            _mark_notified([a["id"] for a in to_send])
+        except Exception:  # noqa: BLE001
+            logger.exception("Could not mark alerts as notified")
+    else:
         logger.warning("Alert e-mail not sent: %s", result.get("message"))
 
 

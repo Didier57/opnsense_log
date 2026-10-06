@@ -67,10 +67,56 @@ def test_bruteforce_alert(db):
 
 
 def test_traffic_spike_alert(db):
-    _raise_thresholds(detection_portscan_ports=100000, detection_bruteforce_count=100000, detection_spike_threshold=5)
+    _raise_thresholds(
+        detection_portscan_ports=100000,
+        detection_bruteforce_count=100000,
+        detection_spike_enabled=True,
+        detection_spike_threshold=5,
+    )
     EventRepository(db).insert_events([_event() for _ in range(6)])
     alerts = deng.run_cycle()
     assert any(a["rule"] == "traffic_spike" for a in alerts)
+
+
+def test_traffic_spike_disabled_by_default(db):
+    _raise_thresholds(detection_portscan_ports=100000, detection_bruteforce_count=100000, detection_spike_threshold=5)
+    EventRepository(db).insert_events([_event() for _ in range(6)])
+    assert not any(a["rule"] == "traffic_spike" for a in deng.run_cycle())
+
+
+def test_notification_cooldown_suppresses_duplicates(db, monkeypatch):
+    calls: list[str] = []
+    monkeypatch.setattr(
+        deng,
+        "get_smtp_settings",
+        lambda mask_password=False: {"smtp_enabled": True, "smtp_host": "h", "smtp_to": "a@b.c"},
+    )
+    monkeypatch.setattr(
+        deng,
+        "send_email",
+        lambda subject, body, settings=None: (calls.append(subject), {"ok": True, "message": "sent"})[1],
+    )
+    cfg = {"detection_notify_cooldown_min": 60}
+    first = {
+        "id": "port_scan:1.2.3.4:1",
+        "rule": "port_scan",
+        "severity": "warning",
+        "src_ip": "1.2.3.4",
+        "title": "t",
+        "message": "m",
+        "details": {},
+    }
+    deng._store_alert(first)
+    deng._notify([first], cfg)
+    assert len(calls) == 1
+    # Same finding, different window bucket -> suppressed by the cooldown.
+    second = {**first, "id": "port_scan:1.2.3.4:2"}
+    deng._store_alert(second)
+    deng._notify([second], cfg)
+    assert len(calls) == 1
+    # Cooldown disabled -> it is sent again.
+    deng._notify([second], {"detection_notify_cooldown_min": 0})
+    assert len(calls) == 2
 
 
 def test_disabled_detection_returns_nothing(db):

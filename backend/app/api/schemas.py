@@ -58,8 +58,10 @@ class DetectionSettings(BaseModel):
     detection_portscan_window_sec: int | None = Field(default=None, ge=5)
     detection_bruteforce_count: int | None = Field(default=None, ge=2)
     detection_bruteforce_window_sec: int | None = Field(default=None, ge=5)
+    detection_spike_enabled: bool | None = None
     detection_spike_threshold: int | None = Field(default=None, ge=1)
     detection_spike_window_sec: int | None = Field(default=None, ge=5)
+    detection_notify_cooldown_min: int | None = Field(default=None, ge=0)
 
 
 class NotificationSettings(BaseModel):
