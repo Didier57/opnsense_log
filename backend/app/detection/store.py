@@ -17,7 +17,7 @@ _INT_KEYS = [
     "detection_spike_threshold",
     "detection_spike_window_sec",
 ]
-_BOOL_KEYS = ["detection_enabled"]
+_BOOL_KEYS = ["detection_enabled", "detection_ignore_private"]
 _KEYS = _BOOL_KEYS + _INT_KEYS
 
 # (key, minimum) so a user cannot disable detection by entering an absurd value.

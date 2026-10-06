@@ -52,6 +52,7 @@ class ApplicationSettings(BaseModel):
 
 class DetectionSettings(BaseModel):
     detection_enabled: bool | None = None
+    detection_ignore_private: bool | None = None
     detection_interval_sec: int | None = Field(default=None, ge=15)
     detection_portscan_ports: int | None = Field(default=None, ge=2)
     detection_portscan_window_sec: int | None = Field(default=None, ge=5)

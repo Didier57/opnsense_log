@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     # --- Detection engine ---
     detection_enabled: bool = True
     detection_interval_sec: int = 60
+    # Ignore alerts whose source is a private/loopback/link-local address so
+    # normal LAN traffic does not raise false positives.
+    detection_ignore_private: bool = True
     detection_portscan_ports: int = 20
     detection_portscan_window_sec: int = 60
     detection_bruteforce_count: int = 20

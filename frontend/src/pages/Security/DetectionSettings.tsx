@@ -3,6 +3,7 @@ import { api } from "../../api/client";
 
 interface DetectionForm {
   detection_enabled: boolean;
+  detection_ignore_private: boolean;
   detection_interval_sec: number;
   detection_portscan_ports: number;
   detection_portscan_window_sec: number;
@@ -14,6 +15,7 @@ interface DetectionForm {
 
 const DEFAULT_FORM: DetectionForm = {
   detection_enabled: true,
+  detection_ignore_private: true,
   detection_interval_sec: 60,
   detection_portscan_ports: 20,
   detection_portscan_window_sec: 60,
@@ -45,6 +47,7 @@ export function DetectionSettings() {
       .then((data) => {
         setForm({
           detection_enabled: Boolean(data.detection_enabled ?? true),
+          detection_ignore_private: Boolean(data.detection_ignore_private ?? true),
           detection_interval_sec: Number(data.detection_interval_sec ?? 60),
           detection_portscan_ports: Number(data.detection_portscan_ports ?? 20),
           detection_portscan_window_sec: Number(data.detection_portscan_window_sec ?? 60),
@@ -96,6 +99,14 @@ export function DetectionSettings() {
             onChange={(e) => setForm({ ...form, detection_enabled: e.target.checked })}
           />
           Activer le moteur de détection
+        </label>
+        <label className="filters">
+          <input
+            type="checkbox"
+            checked={form.detection_ignore_private}
+            onChange={(e) => setForm({ ...form, detection_ignore_private: e.target.checked })}
+          />
+          Ignorer les adresses privées / locales (LAN) — évite les fausses alertes
         </label>
       </div>
 

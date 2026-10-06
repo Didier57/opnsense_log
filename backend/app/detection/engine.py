@@ -8,6 +8,7 @@ single digest e-mail is sent per cycle containing the newly raised alerts.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -24,6 +25,26 @@ _MAX_PER_RULE = 25
 
 def _rows(sql: str, params: list) -> list[tuple]:
     return get_database().execute_read(sql, params).fetchall()
+
+
+def _is_internal(ip: str) -> bool:
+    """True for private/loopback/link-local/reserved addresses (LAN traffic)."""
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return (
+        addr.is_private
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_multicast
+        or addr.is_reserved
+        or addr.is_unspecified
+    )
+
+
+def _skip_source(cfg: dict, src_ip: str) -> bool:
+    return bool(cfg.get("detection_ignore_private", True)) and _is_internal(src_ip)
 
 
 def _detect_port_scan(cfg: dict) -> list[dict]:
@@ -44,6 +65,8 @@ def _detect_port_scan(cfg: dict) -> list[dict]:
     bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
     alerts = []
     for src_ip, ports in rows:
+        if _skip_source(cfg, src_ip):
+            continue
         alerts.append(
             {
                 "id": f"port_scan:{src_ip}:{bucket}",
@@ -77,6 +100,8 @@ def _detect_bruteforce(cfg: dict) -> list[dict]:
     bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
     alerts = []
     for src_ip, attempts in rows:
+        if _skip_source(cfg, src_ip):
+            continue
         alerts.append(
             {
                 "id": f"bruteforce:{src_ip}:{bucket}",

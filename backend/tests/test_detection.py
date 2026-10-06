@@ -25,7 +25,7 @@ def db(tmp_path, monkeypatch):
 def _event(**kw) -> FirewallEvent:
     base = {
         "event_time": datetime.now(timezone.utc),
-        "src_ip": "10.0.0.5",
+        "src_ip": "1.2.3.4",
         "action": "pass",
         "protocol": "tcp",
     }
@@ -78,6 +78,18 @@ def test_disabled_detection_returns_nothing(db):
     dstore.update_detection_settings({"detection_enabled": False})
     EventRepository(db).insert_events([_event(dst_port=p) for p in (22, 80, 443)])
     assert deng.run_cycle() == []
+
+
+def test_private_source_ignored_by_default(db):
+    # LAN traffic must not raise a port-scan alert by default.
+    _raise_thresholds()
+    EventRepository(db).insert_events(
+        [_event(src_ip="10.0.0.5", dst_port=p) for p in (22, 80, 443)]
+    )
+    assert not any(a["rule"] == "port_scan" for a in deng.run_cycle())
+    # ...but it does when the filter is disabled.
+    dstore.update_detection_settings({"detection_ignore_private": False})
+    assert any(a["rule"] == "port_scan" for a in deng.run_cycle())
 
 
 def test_list_and_clear_alerts(db):
