@@ -13,10 +13,7 @@ function interfaceLabel(event: FirewallEvent, interfaceMap: Record<string, strin
 }
 
 function directionLabel(direction: string): string {
-  const value = (direction || "").toLowerCase();
-  if (value === "in") return "Entrée";
-  if (value === "out") return "Sortie";
-  return direction ? direction[0].toUpperCase() + direction.slice(1) : "—";
+  return direction || "—";
 }
 
 export function LogTable({ events, onSelect, interfaceMap = {}, ruleMap = {} }: Props) {
