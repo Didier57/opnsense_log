@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Data / databases
+/data/
+*.duckdb
+*.duckdb.wal
+*.parquet
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Env & secrets
+.env
+*.key
+*.pem
+
+# Build
+backend/static/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

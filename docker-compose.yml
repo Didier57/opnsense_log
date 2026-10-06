@@ -1,0 +1,30 @@
+services:
+  opnsense-log-analyzer:
+    image: ghcr.io/didier57/opnsense-log-analyzer:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: opnsense-log-analyzer
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+      - "${SYSLOG_PORT:-5140}:5140/udp"
+      - "${SYSLOG_PORT:-5140}:5140/tcp"
+    environment:
+      WEB_PORT: "8080"
+      SYSLOG_PORT: "${SYSLOG_PORT:-5140}"
+      SYSLOG_PROTOCOL: "${SYSLOG_PROTOCOL:-udp}"
+      DATA_DIR: "/data"
+      LOG_RETENTION_DAYS: "${LOG_RETENTION_DAYS:-30}"
+      AUTH_ENABLED: "${AUTH_ENABLED:-true}"
+      AUTH_USERNAME: "${AUTH_USERNAME:-admin}"
+      AUTH_PASSWORD_HASH: "${AUTH_PASSWORD_HASH:-}"
+      SECRET_KEY: "${SECRET_KEY:-change-me-in-production}"
+      DISPLAY_TIMEZONE: "${DISPLAY_TIMEZONE:-Europe/Luxembourg}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      OPNSENSE_SYNC_ENABLED: "${OPNSENSE_SYNC_ENABLED:-false}"
+    volumes:
+      - opnsense_logs:/data
+
+volumes:
+  opnsense_logs:
