@@ -27,14 +27,14 @@ def status(user: str = Depends(require_user)) -> dict:
     opnsense_ok = False
     ssh_error = ""
     cfg = get_opnsense_settings(mask_password=False)
-    if cfg["host"]:
+    if cfg["opnsense_host"]:
         client = OPNsenseSSH(
-            host=cfg["host"],
-            port=cfg["port"],
-            username=cfg["username"],
-            auth_type=cfg["auth_type"],
-            password=cfg.get("password"),
-            key_path=cfg["key_path"],
+            host=cfg["opnsense_host"],
+            port=cfg["opnsense_ssh_port"],
+            username=cfg["opnsense_username"],
+            auth_type=cfg["opnsense_auth_type"],
+            password=cfg.get("opnsense_password"),
+            key_path=cfg["opnsense_key_path"],
         )
         try:
             opnsense_ok = client.test_connection()
@@ -45,7 +45,7 @@ def status(user: str = Depends(require_user)) -> dict:
         "syslog": {"connected": syslog_server.connected, "protocol": settings.syslog_protocol,
                     "port": settings.syslog_port},
         "database": {"ok": db_ok},
-        "opnsense": {"connected": opnsense_ok, "configured": bool(cfg["host"]), "error": ssh_error},
+        "opnsense": {"connected": opnsense_ok, "configured": bool(cfg["opnsense_host"]), "error": ssh_error},
         "websocket": {"running": True, "subscribers": live_hub.subscriber_count},
         "storage": {"data_dir": settings.data_dir, "retention_days": settings.log_retention_days},
         "counters": counters.snapshot(),

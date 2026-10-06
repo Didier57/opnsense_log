@@ -1,21 +1,21 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api/client";
+import { SyncButton } from "../../components/SyncButton";
 import type { OpnsenseInterface } from "../../types";
 
 export function OpnsenseInterfaces() {
   const [items, setItems] = useState<OpnsenseInterface[]>([]);
 
+  const load = () => api.interfaces().then((r) => setItems(r.items)).catch(() => undefined);
   useEffect(() => {
-    api.interfaces().then((r) => setItems(r.items)).catch(() => undefined);
+    load();
   }, []);
 
   return (
     <>
       <div className="topbar">
         <h2>OPNsense interfaces</h2>
-        <button className="active" onClick={() => api.syncRules().then(() => api.interfaces().then((r) => setItems(r.items)))}>
-          Synchronise
-        </button>
+        <SyncButton onDone={load} />
       </div>
       <div className="panel">
         <table className="log-table">

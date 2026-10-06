@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api/client";
+import { SyncButton } from "../../components/SyncButton";
 import type { OpnsenseRule } from "../../types";
 
 export function OpnsenseRules() {
@@ -15,12 +16,7 @@ export function OpnsenseRules() {
     <>
       <div className="topbar">
         <h2>OPNsense rules</h2>
-        <button
-          className="active"
-          onClick={() => api.syncRules().then(() => load())}
-        >
-          Synchronise
-        </button>
+        <SyncButton onDone={load} />
       </div>
       <div className="panel">
         <table className="log-table">

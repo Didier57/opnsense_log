@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 from ..storage.database import Database, get_database
