@@ -1,0 +1,28 @@
+name: Cleanup old workflow runs
+
+on:
+  schedule:
+    # Every day at 03:00 UTC
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete all but the 4 most recent runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          gh run list --repo "$REPO" --limit 1000 --json databaseId --jq '.[].databaseId' \
+            | tail -n +5 \
+            | while read -r id; do
+                [ -n "$id" ] || continue
+                echo "Deleting run $id"
+                gh run delete "$id" --repo "$REPO" || true
+              done
