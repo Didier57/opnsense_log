@@ -7,6 +7,7 @@ interface Props {
   interfaceMap?: Record<string, string>;
   ruleMap?: Record<string, string>;
   hostnameMap?: Record<string, string>;
+  countryMap?: Record<string, string>;
 }
 
 function interfaceLabel(event: FirewallEvent, interfaceMap: Record<string, string>): string {
@@ -17,7 +18,7 @@ function directionLabel(direction: string): string {
   return direction || "—";
 }
 
-export function LogTable({ events, onSelect, interfaceMap = {}, ruleMap = {}, hostnameMap = {} }: Props) {
+export function LogTable({ events, onSelect, interfaceMap = {}, ruleMap = {}, hostnameMap = {}, countryMap = {} }: Props) {
   if (events.length === 0) {
     return <p className="muted">Aucun événement.</p>;
   }
@@ -55,6 +56,9 @@ export function LogTable({ events, onSelect, interfaceMap = {}, ruleMap = {}, ho
                 {hostnameMap[event.src_ip] && (
                   <div className="hostline muted">{hostnameMap[event.src_ip]}</div>
                 )}
+                {countryMap[event.src_ip] && (
+                  <div className="hostline muted">{countryMap[event.src_ip]}</div>
+                )}
               </td>
               <td className="mono" title={`${event.dst_ip}${portLabel(event.dst_port)}`}>
                 <span className="truncate">
@@ -63,6 +67,9 @@ export function LogTable({ events, onSelect, interfaceMap = {}, ruleMap = {}, ho
                 </span>
                 {hostnameMap[event.dst_ip] && (
                   <div className="hostline muted">{hostnameMap[event.dst_ip]}</div>
+                )}
+                {countryMap[event.dst_ip] && (
+                  <div className="hostline muted">{countryMap[event.dst_ip]}</div>
                 )}
               </td>
               <td>

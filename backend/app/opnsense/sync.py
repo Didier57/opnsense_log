@@ -6,8 +6,9 @@ import logging
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
+from ..geoip.store import get_geo_settings, set_geo_credentials
 from ..storage.database import Database, get_database
-from .config_loader import parse_config, parse_rules_debug
+from .config_loader import parse_config, parse_geoip_credentials, parse_rules_debug
 from .dhcp import (
     discover_script as dhcp_discover_script,
     fetch_script as dhcp_fetch_script,
@@ -98,6 +99,17 @@ class OPNSenseSync:
         except ET.ParseError as exc:
             logger.error("Failed to parse OPNsense config: %s", exc)
             return {"ok": False, "error": f"config parse error: {exc}"}
+
+        # Auto-detect the MaxMind account id / licence key from the GeoIP alias
+        # settings so GeoIP works without re-entering it (only when no key has
+        # been configured manually in the web UI).
+        try:
+            creds = parse_geoip_credentials(contents)
+            if creds.get("license_key") and not get_geo_settings(mask_key=True)["has_license_key"]:
+                set_geo_credentials(creds.get("account_id", ""), creds["license_key"])
+                logger.info("MaxMind credentials detected in the OPNsense GeoIP settings")
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to detect GeoIP credentials")
 
         # Resolve automatic/system/NAT rules that only exist in the loaded
         # ruleset (never in config.xml): each rule line carries

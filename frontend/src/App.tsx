@@ -14,6 +14,7 @@ import { OpnsenseInterfaces } from "./pages/OPNsense/OpnsenseInterfaces";
 import { OpnsenseRules } from "./pages/OPNsense/OpnsenseRules";
 import { Settings } from "./pages/Settings/Settings";
 import { NotificationsSettings } from "./pages/Settings/NotificationsSettings";
+import { GeoipSettings } from "./pages/Settings/GeoipSettings";
 import { OpnsenseSettings } from "./pages/Settings/OpnsenseSettings";
 import { SystemStatus } from "./pages/System/SystemStatus";
 import { SystemLogs } from "./pages/System/SystemLogs";
@@ -47,6 +48,7 @@ export function App() {
                 <Route path="opnsense/rules" element={<OpnsenseRules />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="settings/notifications" element={<NotificationsSettings />} />
+                <Route path="settings/geoip" element={<GeoipSettings />} />
                 <Route path="settings/opnsense" element={<OpnsenseSettings />} />
                 <Route path="system" element={<SystemStatus />} />
                 <Route path="system/logs" element={<SystemLogs />} />

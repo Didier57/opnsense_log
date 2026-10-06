@@ -14,6 +14,7 @@ from .api import api_router
 from .config import settings
 from .core.logging import setup_logging
 from .detection.engine import detection_loop
+from .geoip.resolver import geo_update_loop
 from .opnsense.settings_store import get_opnsense_settings
 from .opnsense.sync import OPNSenseSync
 from .storage.retention import retention_loop
@@ -65,6 +66,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(retention_loop(), name="retention"),
         asyncio.create_task(_opnsense_sync_loop(), name="opnsense-sync"),
         asyncio.create_task(detection_loop(), name="detection"),
+        asyncio.create_task(geo_update_loop(), name="geoip"),
     ]
     yield
     logger.info("Shutting down")

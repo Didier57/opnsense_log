@@ -74,3 +74,9 @@ class NotificationSettings(BaseModel):
     smtp_from_email: str | None = None
     smtp_from_name: str | None = None
     smtp_to: str | None = None
+
+
+class GeoIpSettings(BaseModel):
+    geoip_enabled: bool | None = None
+    geoip_account_id: str | None = None
+    geoip_license_key: str | None = None

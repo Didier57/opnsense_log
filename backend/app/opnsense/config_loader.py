@@ -21,6 +21,7 @@ import hashlib
 import json
 import re
 import xml.etree.ElementTree as ET
+from urllib.parse import unquote
 
 
 def _text(element: ET.Element | None, tag: str, default: str = "") -> str:
@@ -212,6 +213,43 @@ def parse_rules(root: ET.Element) -> list[dict]:
 def parse_config(contents: str) -> tuple[list[dict], list[dict]]:
     root = ET.fromstring(contents)
     return parse_interfaces(root), parse_rules(root)
+
+
+_GEOIP_URL_RE = re.compile(r"<geoip>\s*<url>([^<]*)</url>", re.S)
+_MAXMIND_USERINFO_RE = re.compile(r"^https?://([^:/@]+):([^@/]+)@download\.maxmind\.com/")
+_MAXMIND_LICENSE_RE = re.compile(r"(?:[?&]|&amp;)license_key=([^&<]+)")
+_MAXMIND_ACCOUNT_RE = re.compile(r"(?:[?&]|&amp;)account_id=([^&<]+)")
+
+
+def parse_geoip_credentials(contents: str) -> dict:
+    """Extract the MaxMind account id / licence key from the GeoIP alias URL.
+
+    OPNsense stores the GeoIP database URL under
+    ``OPNsense/Firewall/Alias/geoip/url``. It may be either the modern form
+    (``https://<account>:<key>@download.maxmind.com/...``) or the legacy form
+    (``.../geoip_download?edition_id=...&license_key=<key>``). Returns ``{}``
+    when no MaxMind credentials are present.
+    """
+    match = _GEOIP_URL_RE.search(contents)
+    if not match:
+        return {}
+    url = match.group(1).strip()
+    if not url:
+        return {}
+    userinfo = _MAXMIND_USERINFO_RE.match(url)
+    if userinfo:
+        return {
+            "account_id": unquote(userinfo.group(1)),
+            "license_key": unquote(userinfo.group(2)),
+        }
+    license_match = _MAXMIND_LICENSE_RE.search(url)
+    if not license_match:
+        return {}
+    result = {"license_key": unquote(license_match.group(1))}
+    account_match = _MAXMIND_ACCOUNT_RE.search(url)
+    if account_match:
+        result["account_id"] = unquote(account_match.group(1))
+    return result
 
 
 _LABEL_RE = re.compile(r'\blabel\s+"([^"]*)"')

@@ -134,6 +134,13 @@ CREATE TABLE IF NOT EXISTS dhcp_leases (
     "updated_at" TIMESTAMPTZ
 );
 
+CREATE TABLE IF NOT EXISTS geoip_cache (
+    "ip"           VARCHAR PRIMARY KEY,
+    "country"      VARCHAR,
+    "country_name" VARCHAR,
+    "updated_at"   TIMESTAMPTZ
+);
+
 CREATE TABLE IF NOT EXISTS alerts (
     "id"         VARCHAR PRIMARY KEY,
     "created_at" TIMESTAMPTZ,

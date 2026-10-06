@@ -102,3 +102,9 @@ export interface Alert {
   message: string;
   details: Record<string, unknown>;
 }
+
+export interface GeoItem {
+  value: string;
+  name: string;
+  count: number;
+}

@@ -101,6 +101,16 @@ class Settings(BaseSettings):
     # again (minutes).
     hostname_lookup_ttl_min: int = 1440
 
+    # --- Geolocation (GeoIP country) ---
+    # Country lookup for public IPs. Defaults to the free DB-IP Lite database
+    # (no account required). When a MaxMind account id / licence key is set
+    # (in the web UI or auto-detected from the OPNsense GeoIP alias settings),
+    # the MaxMind GeoLite2 database is used instead.
+    geoip_enabled: bool = True
+    geoip_account_id: str = ""
+    geoip_license_key: str = ""
+    geoip_update_interval_hours: int = 168
+
     @property
     def syslog_protocols(self) -> list[str]:
         value = self.syslog_protocol.lower().strip()

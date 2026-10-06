@@ -22,12 +22,15 @@ export function Live() {
   const [selected, setSelected] = useState<FirewallEvent | null>(null);
   const [lookupEnabled, setLookupEnabled] = useState(false);
   const [hostnameMap, setHostnameMap] = useState<Record<string, string>>({});
+  const [countriesEnabled, setCountriesEnabled] = useState(false);
+  const [countryMap, setCountryMap] = useState<Record<string, string>>({});
 
   const pausedRef = useRef(paused);
   const limitRef = useRef(limit);
   const pendingRef = useRef<FirewallEvent[]>([]);
   const eventsRef = useRef<FirewallEvent[]>([]);
   const hostnameMapRef = useRef(hostnameMap);
+  const countryMapRef = useRef(countryMap);
   const interfaceMap = useInterfaceMap();
   const interfaces = useInterfaces();
   const ruleMap = useRuleMap();
@@ -35,6 +38,7 @@ export function Live() {
   pausedRef.current = paused;
   limitRef.current = limit;
   hostnameMapRef.current = hostnameMap;
+  countryMapRef.current = countryMap;
 
   const lanDev = findInterfaceDevice(interfaces, "LAN");
   const wanDev = findInterfaceDevice(interfaces, "WAN");
@@ -130,6 +134,34 @@ export function Live() {
     return () => window.clearInterval(timer);
   }, [lookupEnabled]);
 
+  // Resolve the country of public IPs at a slow pace, only for IPs not yet seen.
+  useEffect(() => {
+    if (!countriesEnabled) return;
+    const timer = window.setInterval(() => {
+      const known = countryMapRef.current;
+      const ips = new Set<string>();
+      for (const event of eventsRef.current) {
+        if (event.src_ip) ips.add(event.src_ip);
+        if (event.dst_ip) ips.add(event.dst_ip);
+      }
+      const pending = [...ips].filter((ip) => !(ip in known)).slice(0, 200);
+      if (pending.length === 0) return;
+      api
+        .geoLookup(pending)
+        .then((res) => {
+          const found: Record<string, string> = {};
+          Object.entries(res.items).forEach(([ip, info]) => {
+            if (info) found[ip] = `${info.name} (${info.country})`;
+          });
+          if (Object.keys(found).length > 0) {
+            setCountryMap((prev) => ({ ...prev, ...found }));
+          }
+        })
+        .catch(() => undefined);
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [countriesEnabled]);
+
   const clearAll = () => {
     setClauses([]);
   };
@@ -156,6 +188,14 @@ export function Live() {
               onChange={(e) => setLookupEnabled(e.target.checked)}
             />
             Rechercher les noms d'hôtes
+          </label>
+          <label className="muted" style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={countriesEnabled}
+              onChange={(e) => setCountriesEnabled(e.target.checked)}
+            />
+            Afficher les pays
           </label>
           <select value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
             {LIMITS.map((l) => (
@@ -185,6 +225,7 @@ export function Live() {
           interfaceMap={interfaceMap}
           ruleMap={ruleMap}
           hostnameMap={lookupEnabled ? hostnameMap : {}}
+          countryMap={countriesEnabled ? countryMap : {}}
         />
       </div>
       <EventDetails

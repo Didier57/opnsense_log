@@ -5,6 +5,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from ..geoip.resolver import geo_resolver
 from ..storage.repository import EventRepository
 from .deps import require_user
 
@@ -33,6 +34,31 @@ def top(
         return {"dimension": dimension, "items": repo.top_values(dimension, start, end, limit)}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/countries")
+def countries(
+    start: datetime | None = None,
+    end: datetime | None = None,
+    limit: int = Query(20, ge=1, le=100),
+    user: str = Depends(require_user),
+) -> dict:
+    """Top countries of the source IPs (GeoIP resolved)."""
+    ips = repo.top_values("src_ip", start, end, 500)
+    resolved = geo_resolver.resolve([item["value"] for item in ips if item.get("value")])
+    totals: dict[str, dict] = {}
+    for item in ips:
+        ip = item.get("value")
+        info = resolved.get(ip) if ip else None
+        if not info:
+            continue
+        code = info["country"]
+        entry = totals.setdefault(
+            code, {"value": code, "name": info.get("name") or code, "count": 0}
+        )
+        entry["count"] += item["count"]
+    items = sorted(totals.values(), key=lambda entry: entry["count"], reverse=True)[:limit]
+    return {"items": items}
 
 
 @router.get("/timeseries")

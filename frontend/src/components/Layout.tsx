@@ -22,6 +22,7 @@ const NAV: { group: string; links: { to: string; label: string }[] }[] = [
       { to: "/analysis/ports", label: "Ports" },
       { to: "/analysis/rules", label: "Règles" },
       { to: "/analysis/interfaces", label: "Interfaces" },
+      { to: "/analysis/countries", label: "Pays" },
     ],
   },
   {
@@ -44,6 +45,7 @@ const NAV: { group: string; links: { to: string; label: string }[] }[] = [
     links: [
       { to: "/settings", label: "Application" },
       { to: "/settings/notifications", label: "Notifications" },
+      { to: "/settings/geoip", label: "Géolocalisation" },
       { to: "/settings/opnsense", label: "OPNsense" },
     ],
   },

@@ -13,6 +13,7 @@ const DIMENSIONS: Record<string, { dimension: string; title: string }> = {
   ports: { dimension: "dst_port", title: "Principaux ports de destination" },
   rules: { dimension: "rule_id", title: "Principales règles" },
   interfaces: { dimension: "interface", title: "Trafic par interface" },
+  countries: { dimension: "country", title: "Trafic par pays" },
 };
 
 export function Analysis() {
@@ -27,7 +28,14 @@ export function Analysis() {
     api.summary(start, end).then(setSummary).catch(() => undefined);
     api.top("protocol", start, end, 10).then((r) => setByProtocol(r.items)).catch(() => undefined);
     api.top("action", start, end, 10).then((r) => setByAction(r.items)).catch(() => undefined);
-    if (kind && DIMENSIONS[kind]) {
+    if (kind === "countries") {
+      api
+        .countries(start, end, 25)
+        .then((r) =>
+          setItems(r.items.map((it) => ({ value: `${it.name} (${it.value})`, count: it.count }))),
+        )
+        .catch(() => undefined);
+    } else if (kind && DIMENSIONS[kind]) {
       api.top(DIMENSIONS[kind].dimension, start, end, 25).then((r) => setItems(r.items)).catch(() => undefined);
     }
   };

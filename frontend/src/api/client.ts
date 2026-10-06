@@ -1,6 +1,7 @@
 import type {
   Alert,
   FirewallEvent,
+  GeoItem,
   OpnsenseInterface,
   OpnsenseRule,
   SavedFilter,
@@ -118,6 +119,29 @@ export const api = {
     request<{ items: Record<string, string | null> }>(
       `/api/lookup?ips=${encodeURIComponent(ips.join(","))}`,
     ),
+
+  geoLookup: (ips: string[]) =>
+    request<{ items: Record<string, { country: string; name: string } | null> }>(
+      `/api/geo?ips=${encodeURIComponent(ips.join(","))}`,
+    ),
+  geoipSettings: () => request<Record<string, unknown>>("/api/settings/geoip"),
+  updateGeoip: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/settings/geoip", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  geoipStatus: () => request<Record<string, unknown>>("/api/settings/geoip/status"),
+  updateGeoipDatabase: () =>
+    request<{ ok: boolean; source?: string; error?: string }>("/api/settings/geoip/update", {
+      method: "POST",
+    }),
+  countries: (start?: string, end?: string, limit = 20) => {
+    const query = new URLSearchParams();
+    if (start) query.set("start", start);
+    if (end) query.set("end", end);
+    query.set("limit", String(limit));
+    return request<{ items: GeoItem[] }>(`/api/statistics/countries?${query.toString()}`);
+  },
 
   settings: () => request<Record<string, unknown>>("/api/settings"),
   appSettings: () => request<Record<string, unknown>>("/api/settings/application"),
