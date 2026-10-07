@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { api, downloadBlob } from "../../api/client";
 import { LogTable } from "../../components/LogTable/LogTable";
 import { EventDetails } from "../../components/EventDetails/EventDetails";
@@ -10,6 +11,7 @@ import { useInterfaceMap } from "../../hooks/useInterfaceMap";
 import { useRuleMap } from "../../hooks/useRuleMap";
 import { formatNumber } from "../../format";
 import type { FirewallEvent, SearchClause, SearchResult } from "../../types";
+import type { AlertFilterState } from "../Security/Alerts";
 
 const PAGE_SIZE = 100;
 
@@ -33,14 +35,15 @@ export function Historical() {
     overrideClauses = clauses,
     overrideLogic = logic,
     overrideCountries = countries,
+    overrideRange = range,
   ) => {
     setLoading(true);
     try {
       const res = await api.search({
         clauses: overrideClauses,
         logic: overrideLogic,
-        start: range.start,
-        end: range.end,
+        start: overrideRange.start,
+        end: overrideRange.end,
         limit: PAGE_SIZE,
         offset: nextOffset,
         countries: overrideCountries.length ? overrideCountries : undefined,
@@ -51,6 +54,21 @@ export function Historical() {
       setLoading(false);
     }
   };
+
+  const location = useLocation();
+
+  useEffect(() => {
+    const state = location.state as AlertFilterState | null;
+    if (!state) return;
+    const nextClauses = state.clauses ?? [];
+    const nextLogic = state.logic ?? "AND";
+    const nextRange = { start: state.start, end: state.end };
+    setClauses(nextClauses);
+    setLogic(nextLogic);
+    setRange(nextRange);
+    run(0, nextClauses, nextLogic, countries, nextRange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
 
   useEffect(() => {
     api

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
 import { formatDateTime } from "../../format";
-import type { Alert } from "../../types";
+import type { Alert, SearchClause } from "../../types";
 
 function severityClass(severity: string): string {
   const value = (severity || "").toLowerCase();
@@ -9,7 +10,32 @@ function severityClass(severity: string): string {
   return "other";
 }
 
+export interface AlertFilterState {
+  clauses: SearchClause[];
+  logic: string;
+  start?: string;
+  end?: string;
+}
+
+function alertFilters(alert: Alert): AlertFilterState {
+  const clauses: SearchClause[] = [];
+  if (alert.src_ip) clauses.push({ field: "src_ip", op: "eq", value: alert.src_ip });
+  const windowSec = Number(alert.details?.window_sec) || 60;
+  const reference = alert.event_time || alert.created_at;
+  let start: string | undefined;
+  let end: string | undefined;
+  if (reference) {
+    const time = new Date(reference).getTime();
+    if (!Number.isNaN(time)) {
+      start = new Date(time - windowSec * 1000).toISOString();
+      end = new Date(time + 5000).toISOString();
+    }
+  }
+  return { clauses, logic: "AND", start, end };
+}
+
 export function Alerts() {
+  const navigate = useNavigate();
   const [items, setItems] = useState<Alert[]>([]);
   const [total, setTotal] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -89,7 +115,12 @@ export function Alerts() {
               </thead>
               <tbody>
                 {items.map((alert) => (
-                  <tr key={alert.id}>
+                  <tr
+                    key={alert.id}
+                    style={{ cursor: "pointer" }}
+                    title="Voir les journaux associés dans l'historique"
+                    onClick={() => navigate("/historical", { state: alertFilters(alert) })}
+                  >
                     <td className="mono" title={`Alerte générée le ${formatDateTime(alert.created_at)}`}>
                       {formatDateTime(alert.event_time || alert.created_at)}
                     </td>
