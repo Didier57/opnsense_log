@@ -1,15 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, liveSocketUrl } from "../../api/client";
 import { StatCard } from "../../components/StatCard";
-import { LineChart } from "../../components/Charts/LineChart";
 import { BarList } from "../../components/Charts/BarList";
-import type { Summary, TimeseriesPoint, TopItem } from "../../types";
+import type { Summary, TopItem } from "../../types";
 
 const INTERVALS = [5, 10, 30, 60];
 
 export function Dashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [points, setPoints] = useState<TimeseriesPoint[]>([]);
   const [topSrc, setTopSrc] = useState<TopItem[]>([]);
   const [topPorts, setTopPorts] = useState<TopItem[]>([]);
   const [topRules, setTopRules] = useState<TopItem[]>([]);
@@ -24,15 +22,13 @@ export function Dashboard() {
     inflight.current = true;
     setRefreshing(true);
     try {
-      const [s, t, src, ports, rules] = await Promise.all([
+      const [s, src, ports, rules] = await Promise.all([
         api.summary(),
-        api.timeseries(undefined, undefined, "hour"),
         api.top("src_ip", undefined, undefined, 10),
         api.top("dst_port", undefined, undefined, 10),
         api.top("rule_id", undefined, undefined, 10),
       ]);
       setSummary(s);
-      setPoints(t.points);
       setTopSrc(src.items);
       setTopPorts(ports.items);
       setTopRules(rules.items);
@@ -117,10 +113,6 @@ export function Dashboard() {
         <StatCard label="Bloqués" value={summary?.blocked ?? 0} />
         <StatCard label="Autorisés" value={summary?.passed ?? 0} />
         <StatCard label="Interfaces" value={summary?.interfaces ?? 0} />
-      </div>
-      <div className="panel">
-        <h3 style={{ marginTop: 0 }}>Événements dans le temps</h3>
-        <LineChart points={points} />
       </div>
       <div className="grid-3">
         <BarList title="Principales IP sources" items={topSrc} />
