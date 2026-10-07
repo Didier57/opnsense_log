@@ -1,10 +1,9 @@
-"""Export of filtered results to CSV / JSON / Parquet."""
+"""Export of filtered results to CSV / JSON."""
 from __future__ import annotations
 
 import csv
 import io
 import json
-import tempfile
 import uuid
 from collections.abc import Iterator
 
@@ -109,21 +108,6 @@ def export(payload: SearchRequest, fmt: str = "csv", user: str = Depends(require
             _json_stream(payload),
             media_type="application/json",
             headers={"Content-Disposition": 'attachment; filename="events.json"'},
-        )
-    if fmt == "parquet":
-        where, params = _where_for(payload)
-        out = tempfile.NamedTemporaryFile(delete=False, suffix=".parquet")
-        out.close()
-        db = get_database()
-        db.execute_write(
-            f"COPY (SELECT {_QUOTED_COLS} FROM events{where} ORDER BY event_time DESC) "
-            f"TO '{out.name}' (FORMAT PARQUET)",
-            params,
-        )
-        return StreamingResponse(
-            open(out.name, "rb"),
-            media_type="application/octet-stream",
-            headers={"Content-Disposition": 'attachment; filename="events.parquet"'},
         )
     raise HTTPException(status_code=400, detail=f"unsupported format: {fmt}")
 

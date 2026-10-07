@@ -11,7 +11,6 @@ venv/
 /data/
 *.duckdb
 *.duckdb.wal
-*.parquet
 
 # Node / frontend
 node_modules/

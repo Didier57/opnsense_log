@@ -33,7 +33,7 @@ configuration OPNsense via SSH.
 - **Correspondance interfaces et règles** récupérée depuis OPNsense via SSH, affichant par
   ex. `LAN (vtnet0)` au lieu du périphérique brut, avec **historique des changements de
   règles** conservé dans le temps.
-- **Export** des résultats de recherche en CSV, JSON et Parquet.
+- **Export** des résultats de recherche en CSV et JSON.
 - **Politique de rétention** (`LOG_RETENTION_DAYS`, `0` = illimitée) avec une tâche de
   nettoyage en arrière-plan.
 - **Filtres enregistrés**, pagination, détails d'événement.

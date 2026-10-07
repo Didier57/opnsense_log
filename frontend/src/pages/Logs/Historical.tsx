@@ -173,7 +173,6 @@ export function Historical() {
         <span className="muted">Export :</span>
         <button onClick={() => exportResults("csv")}>CSV</button>
         <button onClick={() => exportResults("json")}>JSON</button>
-        <button onClick={() => exportResults("parquet")}>Parquet</button>
       </div>
 
       <div className="panel">
