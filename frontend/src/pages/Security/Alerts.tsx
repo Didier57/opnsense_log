@@ -90,7 +90,9 @@ export function Alerts() {
               <tbody>
                 {items.map((alert) => (
                   <tr key={alert.id}>
-                    <td className="mono">{formatDateTime(alert.created_at)}</td>
+                    <td className="mono" title={`Alerte générée le ${formatDateTime(alert.created_at)}`}>
+                      {formatDateTime(alert.event_time || alert.created_at)}
+                    </td>
                     <td>
                       <span className={`badge ${severityClass(alert.severity)}`}>
                         {alert.severity.toUpperCase()}

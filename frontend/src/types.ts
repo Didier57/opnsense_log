@@ -96,6 +96,7 @@ export interface OpnsenseInterface {
 export interface Alert {
   id: string;
   created_at: string;
+  event_time?: string | null;
   rule: string;
   severity: string;
   src_ip: string;

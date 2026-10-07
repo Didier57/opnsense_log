@@ -76,8 +76,15 @@ def _fmt_time(value: datetime | None) -> str:
     """Human readable event time in the configured display timezone."""
     if value is None:
         return "date inconnue"
+    tz_name = settings.display_timezone or "UTC"
     try:
-        tz = ZoneInfo(settings.display_timezone or "UTC")
+        from ..settings_store import get_app_settings
+
+        tz_name = get_app_settings().get("display_timezone") or tz_name
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        tz = ZoneInfo(tz_name)
     except Exception:  # noqa: BLE001
         tz = timezone.utc
     if value.tzinfo is None:
@@ -305,6 +312,7 @@ def list_alerts(limit: int = 200, offset: int = 0) -> dict:
             {
                 "id": row[0],
                 "created_at": row[1],
+                "event_time": details.get("event_time"),
                 "rule": row[2],
                 "severity": row[3],
                 "src_ip": row[4],
