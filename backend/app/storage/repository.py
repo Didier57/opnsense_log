@@ -231,6 +231,7 @@ class EventRepository:
         start: datetime | None = None,
         end: datetime | None = None,
         limit: int = 10,
+        actions: list[str] | None = None,
     ) -> list[dict]:
         columns = {
             "src_ip": '"src_ip"',
@@ -241,11 +242,17 @@ class EventRepository:
             "interface": '"interface"',
             "rule_id": '"rule_id"',
             "action": '"action"',
+            "direction": '"direction"',
         }
         col = columns.get(dimension)
         if col is None:
             raise ValueError(f"invalid dimension: {dimension}")
         where, params = self.build_where(None, start=start, end=end)
+        if actions:
+            marks = ", ".join("?" for _ in actions)
+            clause = f'lower("action") IN ({marks})'
+            where += (" AND " if where else " WHERE ") + clause
+            params = [*params, *[value.lower() for value in actions]]
         return self._top(col, where, params, limit)
 
     def timeseries(

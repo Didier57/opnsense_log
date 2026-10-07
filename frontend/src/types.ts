@@ -113,11 +113,16 @@ export interface GeoItem {
 
 export interface Overview {
   countries: GeoItem[];
+  dst_countries: GeoItem[];
+  countries_blocked: GeoItem[];
   src_external: TopItem[];
   src_internal: TopItem[];
   dst_external: TopItem[];
   dst_internal: TopItem[];
+  blocked_ips: TopItem[];
+  src_ports: TopItem[];
   dst_ports: TopItem[];
+  directions: TopItem[];
   protocols: TopItem[];
   rules: TopItem[];
 }

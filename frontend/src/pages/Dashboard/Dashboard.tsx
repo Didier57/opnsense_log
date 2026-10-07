@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, liveSocketUrl } from "../../api/client";
 import { StatCard } from "../../components/StatCard";
 import { BarList } from "../../components/Charts/BarList";
-import type { Overview, Summary } from "../../types";
+import type { GeoItem, Overview, Summary, TopItem } from "../../types";
 
 const INTERVALS = [5, 10, 30, 60];
 
@@ -73,10 +73,14 @@ export function Dashboard() {
     };
   }, [auto, load]);
 
-  const countries = (overview?.countries ?? []).map((c) => ({
-    value: c.value,
-    label: `${c.name} (${c.value})`,
-    count: c.count,
+  const toGeo = (items: GeoItem[] | undefined) =>
+    (items ?? []).map((c) => ({ value: c.value, label: `${c.name} (${c.value})`, count: c.count }));
+  const directionLabel = (value: unknown) =>
+    value === "in" ? "Entrant" : value === "out" ? "Sortant" : String(value);
+  const directions = (overview?.directions ?? []).map((d: TopItem) => ({
+    value: String(d.value),
+    label: directionLabel(d.value),
+    count: d.count,
   }));
 
   return (
@@ -112,17 +116,26 @@ export function Dashboard() {
         <StatCard label="Interfaces" value={summary?.interfaces ?? 0} />
       </div>
       <div className="grid-3">
-        <BarList title="Pays sources" items={countries} flags />
+        <BarList title="Pays sources" items={toGeo(overview?.countries)} flags />
+        <BarList title="Pays destinations" items={toGeo(overview?.dst_countries)} flags />
+        <BarList title="Bloqués par pays source" items={toGeo(overview?.countries_blocked)} flags />
+      </div>
+      <div className="grid-3">
         <BarList title="Principales IP sources externes" items={overview?.src_external ?? []} />
         <BarList title="Principales IP sources internes" items={overview?.src_internal ?? []} />
+        <BarList title="IP les plus bloquées" items={overview?.blocked_ips ?? []} />
       </div>
       <div className="grid-3">
         <BarList title="Principales IP destinations externes" items={overview?.dst_external ?? []} />
         <BarList title="Principales IP destinations internes" items={overview?.dst_internal ?? []} />
         <BarList title="Principaux ports de destination" items={overview?.dst_ports ?? []} />
       </div>
-      <div className="grid-2">
+      <div className="grid-3">
+        <BarList title="Principaux ports source" items={overview?.src_ports ?? []} />
         <BarList title="Protocoles" items={overview?.protocols ?? []} />
+        <BarList title="Sens du trafic" items={directions} />
+      </div>
+      <div className="grid-2">
         <BarList title="Principales règles" items={overview?.rules ?? []} />
       </div>
     </>
