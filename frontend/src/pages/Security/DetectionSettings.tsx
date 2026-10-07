@@ -153,6 +153,19 @@ export function DetectionSettings() {
     }
   };
 
+  const unblockIp = async (ip: string) => {
+    setBlockMessage("");
+    setBlockError("");
+    try {
+      const result = await api.unblockIp(ip);
+      if (!result.ok) throw new Error(result.error || "Échec du retrait");
+      setBlockMessage(`${ip} retirée.`);
+      loadBlocked();
+    } catch (e) {
+      setBlockError(String(e));
+    }
+  };
+
   return (
     <>
       <div className="topbar">
@@ -292,6 +305,7 @@ export function DetectionSettings() {
                   <th>Source</th>
                   <th>Ajoutée</th>
                   <th>Expire</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -302,6 +316,14 @@ export function DetectionSettings() {
                     <td>{row.source || "—"}</td>
                     <td className="mono">{row.added_at ? formatDateTime(row.added_at) : "—"}</td>
                     <td className="mono">{row.expires_at ? formatDateTime(row.expires_at) : "jamais"}</td>
+                    <td>
+                      <button
+                        title="Retirer cette IP de l'alias et de la liste"
+                        onClick={() => unblockIp(row.ip)}
+                      >
+                        Retirer
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

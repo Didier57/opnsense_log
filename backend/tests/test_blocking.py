@@ -115,3 +115,19 @@ def test_prune_expired_removes_from_alias(database, monkeypatch):
     removed = blocker.prune_expired()
     assert removed == 1
     assert fake.rows["BLOCK"]["content"] == ["5.6.7.8"]
+
+
+def test_unblock_ips_removes_from_alias_and_list(database, monkeypatch):
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg())
+    fake = FakeAPI({"BLOCK": {"uuid": "u1", "name": "BLOCK", "type": "host", "enabled": "1", "content": ["1.2.3.4", "5.6.7.8"]}})
+    monkeypatch.setattr(blocker, "_api", lambda: fake)
+    database.execute_write(
+        'INSERT INTO blocked_ips ("ip", "rule", "source", "added_at", "expires_at") '
+        "VALUES ('1.2.3.4', 'manual', 'manual', now(), NULL)"
+    )
+
+    result = blocker.unblock_ips(["1.2.3.4"])
+    assert result["ok"] is True
+    assert fake.rows["BLOCK"]["content"] == ["5.6.7.8"]
+    assert fake.reconfig == 1
+    assert blocker.list_blocked() == []

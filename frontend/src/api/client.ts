@@ -202,6 +202,11 @@ export const api = {
     }),
   pruneBlocking: () =>
     request<{ ok: boolean; removed: number }>("/api/blocking/prune", { method: "POST" }),
+  unblockIp: (ip: string) =>
+    request<{ ok: boolean; removed: string[]; error?: string }>("/api/blocking/remove", {
+      method: "POST",
+      body: JSON.stringify({ ips: [ip] }),
+    }),
 
   alerts: (limit = 200, offset = 0) =>
     request<{ total: number; limit: number; offset: number; items: Alert[] }>(

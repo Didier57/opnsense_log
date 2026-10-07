@@ -8,7 +8,7 @@ from ..detection.engine import clear_alerts, list_alerts, run_cycle
 from ..detection.store import get_detection_settings, update_detection_settings
 from ..notifications.mailer import send_test_email
 from ..notifications.store import get_smtp_settings, update_smtp_settings
-from ..opnsense.blocker import apply_ips, list_blocked, prune_expired
+from ..opnsense.blocker import apply_ips, list_blocked, prune_expired, unblock_ips
 from .deps import require_user
 from .schemas import BlockingSettings, BlockRequest, DetectionSettings, NotificationSettings
 
@@ -83,3 +83,8 @@ def block_now(payload: BlockRequest, user: str = Depends(require_user)) -> dict:
 @router.post("/blocking/prune")
 def prune_blocked(user: str = Depends(require_user)) -> dict:
     return {"ok": True, "removed": prune_expired()}
+
+
+@router.post("/blocking/remove")
+def unblock_now(payload: BlockRequest, user: str = Depends(require_user)) -> dict:
+    return unblock_ips(payload.ips)

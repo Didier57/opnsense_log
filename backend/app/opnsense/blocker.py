@@ -163,6 +163,31 @@ def prune_expired() -> int:
     return len(expired)
 
 
+def unblock_ips(ips: list[str]) -> dict:
+    """Remove the given IPs from the alias and from the blocked list."""
+    targets = [str(ip or "").strip() for ip in ips if str(ip or "").strip()]
+    if not targets:
+        return {"ok": False, "error": "Aucune IP fournie"}
+    cfg = get_blocking_settings()
+    alias = str(cfg.get("blocking_alias") or "").strip()
+    if alias:
+        api = _api()
+        if api.is_configured():
+            try:
+                row, content = api.get_alias_content(alias)
+                if row is not None:
+                    wanted = set(targets)
+                    keep = [c for c in content if c not in wanted]
+                    if len(keep) != len(content):
+                        api.set_alias_content(row, keep)
+                        api.reconfigure()
+            except APIError as exc:
+                return {"ok": False, "error": str(exc)}
+    marks = ", ".join("?" for _ in targets)
+    get_database().execute_write(f'DELETE FROM blocked_ips WHERE "ip" IN ({marks})', targets)
+    return {"ok": True, "removed": targets}
+
+
 def list_blocked() -> list[dict]:
     rows = get_database().execute_read(
         'SELECT "ip", "rule", "source", "added_at", "expires_at" FROM blocked_ips ORDER BY "added_at" DESC'
