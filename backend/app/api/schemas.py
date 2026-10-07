@@ -44,6 +44,9 @@ class OPNsenseSettings(BaseModel):
     opnsense_sync_enabled: bool | None = None
     opnsense_sync_interval_min: int | None = None
     opnsense_import_on_start: bool | None = None
+    opnsense_api_key: str | None = None
+    opnsense_api_secret: str | None = None
+    opnsense_api_port: int | None = None
 
 
 class ApplicationSettings(BaseModel):
@@ -82,3 +85,15 @@ class GeoIpSettings(BaseModel):
     geoip_enabled: bool | None = None
     geoip_account_id: str | None = None
     geoip_license_key: str | None = None
+
+
+class BlockingSettings(BaseModel):
+    blocking_enabled: bool | None = None
+    blocking_alias: str | None = None
+    blocking_mode: str | None = None
+    blocking_whitelist: str | None = None
+    blocking_ttl_hours: int | None = Field(default=None, ge=0)
+
+
+class BlockRequest(BaseModel):
+    ips: list[str] = Field(default_factory=list)

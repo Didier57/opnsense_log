@@ -3,12 +3,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 
+from ..detection.blocking_store import get_blocking_settings, update_blocking_settings
 from ..detection.engine import clear_alerts, list_alerts, run_cycle
 from ..detection.store import get_detection_settings, update_detection_settings
 from ..notifications.mailer import send_test_email
 from ..notifications.store import get_smtp_settings, update_smtp_settings
+from ..opnsense.blocker import apply_ips, list_blocked, prune_expired
 from .deps import require_user
-from .schemas import DetectionSettings, NotificationSettings
+from .schemas import BlockingSettings, BlockRequest, DetectionSettings, NotificationSettings
 
 router = APIRouter(prefix="/api", tags=["detection"])
 
@@ -56,3 +58,28 @@ def put_notifications(payload: NotificationSettings, user: str = Depends(require
 @router.post("/settings/notifications/test")
 def test_notifications(user: str = Depends(require_user)) -> dict:
     return send_test_email()
+
+
+@router.get("/settings/blocking")
+def get_blocking(user: str = Depends(require_user)) -> dict:
+    return get_blocking_settings()
+
+
+@router.put("/settings/blocking")
+def put_blocking(payload: BlockingSettings, user: str = Depends(require_user)) -> dict:
+    return update_blocking_settings(payload.model_dump(exclude_none=True))
+
+
+@router.get("/blocking/list")
+def get_blocked(user: str = Depends(require_user)) -> dict:
+    return {"items": list_blocked()}
+
+
+@router.post("/blocking/apply")
+def block_now(payload: BlockRequest, user: str = Depends(require_user)) -> dict:
+    return apply_ips(payload.ips, rule="manual", source="manual")
+
+
+@router.post("/blocking/prune")
+def prune_blocked(user: str = Depends(require_user)) -> dict:
+    return {"ok": True, "removed": prune_expired()}

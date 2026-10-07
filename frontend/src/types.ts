@@ -127,6 +127,14 @@ export interface Overview {
   rules: TopItem[];
 }
 
+export interface BlockedIp {
+  ip: string;
+  rule: string;
+  source: string;
+  added_at: string;
+  expires_at: string | null;
+}
+
 export interface FilterlogImportStatus {
   running: boolean;
   started_at: string | null;

@@ -241,6 +241,20 @@ def run_cycle() -> list[dict]:
     if new_alerts:
         logger.info("Detection raised %d new alert(s)", len(new_alerts))
         _notify(new_alerts, cfg)
+
+    try:
+        from ..opnsense.blocker import block_alerts, prune_expired
+        from .blocking_store import get_blocking_settings
+
+        bcfg = get_blocking_settings()
+        if bcfg.get("blocking_enabled") and bcfg.get("blocking_mode") == "auto" and new_alerts:
+            result = block_alerts(new_alerts)
+            if result.get("added"):
+                logger.info("Auto-blocked %d IP(s): %s", len(result["added"]), result["added"])
+        prune_expired()
+    except Exception:  # noqa: BLE001
+        logger.exception("Blocking step failed")
+
     return new_alerts
 
 

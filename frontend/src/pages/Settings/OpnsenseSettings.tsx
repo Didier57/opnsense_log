@@ -9,11 +9,17 @@ const FIELDS: { key: string; label: string; type?: string }[] = [
   { key: "opnsense_password", label: "Mot de passe (laisser vide pour conserver l'actuel)", type: "password" },
   { key: "opnsense_key_path", label: "Chemin de la clé privée" },
   { key: "opnsense_sync_interval_min", label: "Intervalle de synchronisation (min)", type: "number" },
+  { key: "opnsense_api_port", label: "Port API OPNsense (HTTPS, 443 par défaut)", type: "number" },
+  { key: "opnsense_api_key", label: "Clé API OPNsense" },
+  { key: "opnsense_api_secret", label: "Secret API OPNsense (laisser vide pour conserver l'actuel)", type: "password" },
 ];
 
 export function OpnsenseSettings() {
   const [form, setForm] = useState<Record<string, any>>({});
   const [hasPassword, setHasPassword] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(false);
+  const [hasApiSecret, setHasApiSecret] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -29,6 +35,8 @@ export function OpnsenseSettings() {
         next.opnsense_sync_enabled = Boolean(data.opnsense_sync_enabled);
         next.opnsense_import_on_start = Boolean(data.opnsense_import_on_start);
         setHasPassword(Boolean(data.has_password));
+        setHasApiKey(Boolean(data.has_api_key));
+        setHasApiSecret(Boolean(data.has_api_secret));
         setForm(next);
       })
       .catch(() => undefined);
@@ -43,8 +51,10 @@ export function OpnsenseSettings() {
     setBusy(true);
     try {
       const payload: Record<string, unknown> = { ...form };
-      // Never overwrite a stored password with an empty field.
+      // Never overwrite a stored password/secret with an empty field.
       if (!payload.opnsense_password) delete payload.opnsense_password;
+      if (!payload.opnsense_api_secret) delete payload.opnsense_api_secret;
+      if (!payload.opnsense_api_key) delete payload.opnsense_api_key;
       await api.updateOpnsense(payload);
       setMessage("Enregistré.");
       load();
@@ -69,13 +79,56 @@ export function OpnsenseSettings() {
     }
   };
 
+  const generateKey = async () => {
+    if (
+      !window.confirm(
+        "Générer une nouvelle clé API sur le firewall via SSH (utilisateur « " +
+          (form.opnsense_username || "root") +
+          " ») ? Une paire clé/secret sera créée et enregistrée ici.",
+      )
+    )
+      return;
+    setError("");
+    setMessage("");
+    setBusy(true);
+    try {
+      const result = await api.generateOpnsenseApiKey();
+      setMessage(result.message || (result.ok ? "Clé API générée" : "Échec"));
+      if (result.ok) load();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const testApi = async () => {
+    setError("");
+    setMessage("");
+    setBusy(true);
+    try {
+      const result = await api.testOpnsenseApi();
+      setMessage(result.message || (result.ok ? "API OK" : "Échec de l'API"));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <>
       <div className="topbar">
         <h2>Connexion OPNsense</h2>
         <div className="filters">
           <button onClick={test} disabled={busy}>
-            Tester la connexion
+            Tester la connexion SSH
+          </button>
+          <button onClick={testApi} disabled={busy}>
+            Tester l'API
+          </button>
+          <button onClick={generateKey} disabled={busy}>
+            Générer la clé API (SSH)
           </button>
           <button className="active" onClick={save} disabled={busy}>
             {busy ? "…" : "Enregistrer"}
@@ -111,7 +164,10 @@ export function OpnsenseSettings() {
               type={field.type || "text"}
               value={form[field.key] ?? ""}
               placeholder={
-                field.key === "opnsense_password" && hasPassword ? "••••••••" : undefined
+                (field.key === "opnsense_password" && hasPassword) ||
+                (field.key === "opnsense_api_secret" && hasApiSecret)
+                  ? "••••••••"
+                  : undefined
               }
               style={{ width: 320 }}
               onChange={(e) =>
@@ -128,6 +184,37 @@ export function OpnsenseSettings() {
           Préférez l'authentification par clé SSH. Les paramètres sont stockés côté serveur (volume de données) et
           remplacent les valeurs par défaut des variables d'environnement. Les clés privées ne sont jamais écrites dans les journaux.
         </p>
+      </div>
+
+      <div className="panel">
+        <div className="filters" style={{ justifyContent: "space-between" }}>
+          <h3 style={{ margin: 0 }}>Clé API OPNsense (blocage automatique)</h3>
+          <button onClick={() => setShowHelp((v) => !v)}>
+            {showHelp ? "Masquer l'aide" : "Aide"}
+          </button>
+        </div>
+        <p className="muted" style={{ fontSize: 12 }}>
+          Utilisée pour ajouter les IP des alertes (force brute / scan de ports) dans un alias de pare-feu.
+          {hasApiKey && hasApiSecret ? " Une clé est actuellement enregistrée." : " Aucune clé enregistrée."}
+        </p>
+        {showHelp && (
+          <div className="panel" style={{ background: "var(--bg-soft, rgba(255,255,255,0.03))" }}>
+            <p className="muted" style={{ fontSize: 12 }}>
+              Deux méthodes :
+            </p>
+            <ol className="muted" style={{ fontSize: 12 }}>
+              <li>
+                Cliquez sur <strong>« Générer la clé API (SSH) »</strong> : l'application crée une clé (nommée
+                « OPNsense_log ») sur le firewall via SSH et l'enregistre automatiquement.
+              </li>
+              <li>
+                Ou créez-la à la main dans OPNsense : <em>Système → Accès → Utilisateurs</em>, sélectionnez
+                l'utilisateur, bouton « + » dans la section <em>Clés API</em>, puis copiez la clé et le secret ici.
+                Le secret n'est affiché qu'une seule fois.
+              </li>
+            </ol>
+          </div>
+        )}
       </div>
     </>
   );

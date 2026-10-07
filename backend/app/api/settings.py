@@ -4,6 +4,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from ..config import settings
+from ..opnsense.api_client import OPNsenseAPI
+from ..opnsense.api_keygen import generate_api_key
 from ..opnsense.settings_store import get_opnsense_settings, update_opnsense_settings
 from ..opnsense.ssh import OPNsenseSSH
 from ..settings_store import get_app_settings, update_app_settings
@@ -74,3 +76,29 @@ def test_opnsense(user: str = Depends(require_user)) -> dict:
     )
     ok = client.test_connection()
     return {"ok": ok, "message": "connection successful" if ok else "connection failed"}
+
+
+@router.post("/opnsense/generate-api-key")
+def generate_opnsense_api_key(user: str = Depends(require_user)) -> dict:
+    cfg = get_opnsense_settings(mask_password=False)
+    if not cfg.get("opnsense_host"):
+        return {"ok": False, "message": "OPNsense host not configured"}
+    result = generate_api_key(cfg.get("opnsense_username") or "root")
+    if not result.get("ok"):
+        return {"ok": False, "message": result.get("error", "generation failed")}
+    update_opnsense_settings({"opnsense_api_key": result["key"], "opnsense_api_secret": result["secret"]})
+    return {"ok": True, "message": "Clé API générée et enregistrée"}
+
+
+@router.post("/opnsense/api-test")
+def test_opnsense_api(user: str = Depends(require_user)) -> dict:
+    cfg = get_opnsense_settings(mask_password=False)
+    if not cfg.get("opnsense_host"):
+        return {"ok": False, "message": "OPNsense host not configured"}
+    api = OPNsenseAPI(
+        host=cfg["opnsense_host"],
+        port=int(cfg.get("opnsense_api_port", 443) or 443),
+        key=cfg.get("opnsense_api_key", ""),
+        secret=cfg.get("opnsense_api_secret", ""),
+    )
+    return api.test_connection()

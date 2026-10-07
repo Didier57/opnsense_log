@@ -152,6 +152,14 @@ CREATE TABLE IF NOT EXISTS alerts (
     "details"    VARCHAR,
     "notified"   BOOLEAN
 );
+
+CREATE TABLE IF NOT EXISTS blocked_ips (
+    "ip"         VARCHAR PRIMARY KEY,
+    "rule"       VARCHAR,
+    "source"     VARCHAR,
+    "added_at"   TIMESTAMPTZ,
+    "expires_at" TIMESTAMPTZ
+);
 """
 
 

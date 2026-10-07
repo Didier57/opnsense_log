@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api/client";
+import { formatDateTime } from "../../format";
+import type { BlockedIp } from "../../types";
 
 interface DetectionForm {
   detection_enabled: boolean;
@@ -40,11 +42,51 @@ const NUMBER_FIELDS: { key: keyof DetectionForm; label: string; min: number }[] 
   { key: "detection_notify_cooldown_min", label: "Anti-doublon e-mail (min)", min: 0 },
 ];
 
+interface BlockingForm {
+  blocking_enabled: boolean;
+  blocking_alias: string;
+  blocking_mode: string;
+  blocking_whitelist: string;
+  blocking_ttl_hours: number;
+}
+
+const DEFAULT_BLOCKING: BlockingForm = {
+  blocking_enabled: false,
+  blocking_alias: "",
+  blocking_mode: "manual",
+  blocking_whitelist: "",
+  blocking_ttl_hours: 0,
+};
+
 export function DetectionSettings() {
   const [form, setForm] = useState<DetectionForm>(DEFAULT_FORM);
+  const [blocking, setBlocking] = useState<BlockingForm>(DEFAULT_BLOCKING);
+  const [blocked, setBlocked] = useState<BlockedIp[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [blockMessage, setBlockMessage] = useState("");
+  const [blockError, setBlockError] = useState("");
+
+  const loadBlocking = () =>
+    api
+      .blockingSettings()
+      .then((data) =>
+        setBlocking({
+          blocking_enabled: Boolean(data.blocking_enabled ?? false),
+          blocking_alias: String(data.blocking_alias ?? ""),
+          blocking_mode: String(data.blocking_mode ?? "manual"),
+          blocking_whitelist: String(data.blocking_whitelist ?? ""),
+          blocking_ttl_hours: Number(data.blocking_ttl_hours ?? 0),
+        }),
+      )
+      .catch(() => undefined);
+
+  const loadBlocked = () =>
+    api
+      .blockedList()
+      .then((data) => setBlocked(data.items))
+      .catch(() => undefined);
 
   const load = () =>
     api
@@ -68,6 +110,8 @@ export function DetectionSettings() {
 
   useEffect(() => {
     load();
+    loadBlocking();
+    loadBlocked();
   }, []);
 
   const save = async () => {
@@ -82,6 +126,30 @@ export function DetectionSettings() {
       setError(String(e));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const saveBlocking = async () => {
+    setBlockMessage("");
+    setBlockError("");
+    try {
+      await api.updateBlocking({ ...blocking });
+      setBlockMessage("Enregistré.");
+      loadBlocking();
+    } catch (e) {
+      setBlockError(String(e));
+    }
+  };
+
+  const pruneBlocked = async () => {
+    setBlockMessage("");
+    setBlockError("");
+    try {
+      const result = await api.pruneBlocking();
+      setBlockMessage(`${result.removed} IP expirée(s) retirée(s).`);
+      loadBlocked();
+    } catch (e) {
+      setBlockError(String(e));
     }
   };
 
@@ -145,6 +213,101 @@ export function DetectionSettings() {
             </label>
           ))}
         </div>
+      </div>
+
+      <div className="panel">
+        <div className="filters" style={{ justifyContent: "space-between" }}>
+          <h3 style={{ margin: 0 }}>Blocage automatique (alias OPNsense)</h3>
+          <div className="filters">
+            <button onClick={pruneBlocked}>Retirer les IP expirées</button>
+            <button className="active" onClick={saveBlocking}>
+              Enregistrer le blocage
+            </button>
+          </div>
+        </div>
+        <p className="muted" style={{ fontSize: 12 }}>
+          Ajoute les IP sources des alertes <strong>force brute</strong> et <strong>scan de ports</strong> dans un alias
+          de pare-feu de type « Host(s) ». Seules les IP publiques sont ajoutées (les adresses privées et la liste
+          blanche sont ignorées). Nécessite une clé API OPNsense (voir Paramètres → OPNsense).
+        </p>
+        <label className="filters">
+          <input
+            type="checkbox"
+            checked={blocking.blocking_enabled}
+            onChange={(e) => setBlocking({ ...blocking, blocking_enabled: e.target.checked })}
+          />
+          Activer le blocage automatique
+        </label>
+        <div className="grid-2">
+          <label className="muted" style={{ fontSize: 12 }}>
+            Nom de l'alias « Host(s) » cible
+            <br />
+            <input
+              type="text"
+              value={blocking.blocking_alias}
+              onChange={(e) => setBlocking({ ...blocking, blocking_alias: e.target.value })}
+            />
+          </label>
+          <label className="muted" style={{ fontSize: 12 }}>
+            Mode
+            <br />
+            <select
+              value={blocking.blocking_mode}
+              onChange={(e) => setBlocking({ ...blocking, blocking_mode: e.target.value })}
+            >
+              <option value="manual">Manuel (bouton sur les alertes)</option>
+              <option value="auto">Automatique</option>
+            </select>
+          </label>
+          <label className="muted" style={{ fontSize: 12 }}>
+            Durée de blocage (heures, 0 = illimité)
+            <br />
+            <input
+              type="number"
+              min={0}
+              value={blocking.blocking_ttl_hours}
+              onChange={(e) => setBlocking({ ...blocking, blocking_ttl_hours: Number(e.target.value) })}
+            />
+          </label>
+        </div>
+        <label className="muted" style={{ fontSize: 12 }}>
+          Liste blanche (IP ou CIDR, séparés par des virgules — jamais bloqués)
+          <br />
+          <textarea
+            rows={2}
+            style={{ width: "100%" }}
+            value={blocking.blocking_whitelist}
+            onChange={(e) => setBlocking({ ...blocking, blocking_whitelist: e.target.value })}
+          />
+        </label>
+        {blockMessage && <p className="muted">{blockMessage}</p>}
+        {blockError && <p className="error">{blockError}</p>}
+        {blocked.length > 0 && (
+          <div className="table-scroll" style={{ maxHeight: 200 }}>
+            <table className="log-table">
+              <thead>
+                <tr>
+                  <th>IP</th>
+                  <th>Règle</th>
+                  <th>Source</th>
+                  <th>Ajoutée</th>
+                  <th>Expire</th>
+                </tr>
+              </thead>
+              <tbody>
+                {blocked.map((row) => (
+                  <tr key={row.ip}>
+                    <td className="mono">{row.ip}</td>
+                    <td>{row.rule || "—"}</td>
+                    <td>{row.source || "—"}</td>
+                    <td className="mono">{row.added_at ? formatDateTime(row.added_at) : "—"}</td>
+                    <td className="mono">{row.expires_at ? formatDateTime(row.expires_at) : "jamais"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {message && <p className="muted">{message}</p>}

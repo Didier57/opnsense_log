@@ -1,5 +1,6 @@
 import type {
   Alert,
+  BlockedIp,
   FirewallEvent,
   FilterlogImportStatus,
   GeoItem,
@@ -173,6 +174,29 @@ export const api = {
     }),
   testOpnsense: () =>
     request<{ ok: boolean; message: string }>("/api/settings/opnsense/test", { method: "POST" }),
+  generateOpnsenseApiKey: () =>
+    request<{ ok: boolean; message: string }>("/api/settings/opnsense/generate-api-key", {
+      method: "POST",
+    }),
+  testOpnsenseApi: () =>
+    request<{ ok: boolean; message: string }>("/api/settings/opnsense/api-test", {
+      method: "POST",
+    }),
+
+  blockingSettings: () => request<Record<string, unknown>>("/api/settings/blocking"),
+  updateBlocking: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/settings/blocking", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  blockedList: () => request<{ items: BlockedIp[] }>("/api/blocking/list"),
+  applyBlocking: (ips: string[]) =>
+    request<{ ok: boolean; added: string[]; error?: string }>("/api/blocking/apply", {
+      method: "POST",
+      body: JSON.stringify({ ips }),
+    }),
+  pruneBlocking: () =>
+    request<{ ok: boolean; removed: number }>("/api/blocking/prune", { method: "POST" }),
 
   alerts: (limit = 200, offset = 0) =>
     request<{ total: number; limit: number; offset: number; items: Alert[] }>(

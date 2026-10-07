@@ -80,6 +80,21 @@ export function Alerts() {
     }
   };
 
+  const blockIp = async (ip: string) => {
+    setMessage("");
+    setError("");
+    try {
+      const result = await api.applyBlocking([ip]);
+      if (result.ok) {
+        setMessage(result.added.length ? `IP ${ip} bloquée (alias).` : `IP ${ip} déjà présente ou non éligible.`);
+      } else {
+        setError(result.error || "Échec du blocage");
+      }
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   return (
     <>
       <div className="topbar">
@@ -130,7 +145,21 @@ export function Alerts() {
                       </span>
                     </td>
                     <td>{alert.rule}</td>
-                    <td className="mono">{alert.src_ip || "—"}</td>
+                    <td className="mono">
+                      {alert.src_ip || "—"}
+                      {alert.src_ip && (
+                        <button
+                          style={{ marginLeft: 8 }}
+                          title="Ajouter cette IP à l'alias de blocage"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            blockIp(alert.src_ip);
+                          }}
+                        >
+                          Bloquer
+                        </button>
+                      )}
+                    </td>
                     <td>
                       <strong>{alert.title}</strong>
                       <div className="muted" style={{ fontSize: 12 }}>

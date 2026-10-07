@@ -46,6 +46,24 @@ class Settings(BaseSettings):
     opnsense_sync_enabled: bool = False
     # Import firewall logs directly from the OPNsense log files over SSH on startup.
     opnsense_import_on_start: bool = True
+    # OPNsense REST API credentials (used to manage firewall aliases for the
+    # automatic blocking feature). Key/secret are created in the OPNsense GUI or
+    # generated over SSH from the web UI.
+    opnsense_api_key: str = ""
+    opnsense_api_secret: str = ""
+    opnsense_api_port: int = 443
+
+    # --- Automatic blocking (push alert source IPs into an OPNsense alias) ---
+    # When enabled, the source IPs of bruteforce / port-scan alerts are added to
+    # an existing "Host(s)" firewall alias so a firewall rule can block them.
+    blocking_enabled: bool = False
+    blocking_alias: str = ""
+    blocking_mode: str = "manual"  # manual | auto
+    # IPs / CIDR that must never be blocked (gateway, DNS, admin...). Comma or
+    # space separated.
+    blocking_whitelist: str = ""
+    # Remove blocked IPs from the alias after this many hours (0 = keep forever).
+    blocking_ttl_hours: int = 0
 
     # --- Auth ---
     auth_enabled: bool = True
