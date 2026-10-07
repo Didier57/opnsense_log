@@ -92,17 +92,21 @@ export function GeoipSettings() {
           Activer la géolocalisation
         </label>
         <p className="muted">
-          Par défaut, la base gratuite DB-IP Lite est utilisée (aucun compte requis). Si vous renseignez un
-          identifiant et une clé de licence MaxMind, la base GeoLite2 est utilisée à la place. La licence
-          MaxMind configurée dans OPNsense (Firewall → Aliases → GeoIP) est récupérée automatiquement lors de
-          la synchronisation.
+          Par défaut, la base gratuite DB-IP Lite est utilisée (aucun compte requis). Pour utiliser MaxMind
+          GeoLite2, seule la <strong>clé de licence</strong> est nécessaire. L'Account ID n'est utile que si
+          votre lien MaxMind est au format récent{" "}
+          <span className="mono">https://&lt;AccountID&gt;:&lt;Clé&gt;@download.maxmind.com/...</span> ; avec le
+          lien historique (<span className="mono">...&amp;license_key=...</span>) laissez l'Account ID vide. La
+          clé configurée dans OPNsense (Firewall → Aliases → GeoIP) est récupérée automatiquement lors de la
+          synchronisation.
         </p>
         <div className="grid-2">
           <label>
-            Identifiant MaxMind (Account ID)
+            Identifiant MaxMind (Account ID — facultatif)
             <input
               value={form.geoip_account_id}
               onChange={(e) => setForm({ ...form, geoip_account_id: e.target.value })}
+              placeholder="requis uniquement pour le lien récent"
             />
           </label>
           <label>
