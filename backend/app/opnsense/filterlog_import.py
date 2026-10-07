@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import re
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 from ..parser import parse_message
@@ -148,15 +149,15 @@ def _iter_records(ssh: OPNsenseSSH, path: str):
     buffer = ""
     for chunk in ssh.read_chunks(f"cat {path}", CHUNK_SIZE):
         buffer += chunk
-        while True:
-            marks = list(_PRI_RE.finditer(buffer))
-            if len(marks) < 2:
-                break
-            yield buffer[marks[0].start():marks[1].start()]
-            buffer = buffer[marks[1].start():]
-    marks = list(_PRI_RE.finditer(buffer))
-    if marks:
-        tail = buffer[marks[0].start():].strip()
+        marks = [match.start() for match in _PRI_RE.finditer(buffer)]
+        if len(marks) < 2:
+            continue
+        for index in range(len(marks) - 1):
+            yield buffer[marks[index]:marks[index + 1]]
+        buffer = buffer[marks[-1]:]
+    match = _PRI_RE.search(buffer)
+    if match:
+        tail = buffer[match.start():].strip()
         if tail:
             yield tail
 
@@ -189,6 +190,7 @@ def _import_file(
             repo.insert_events(batch)
             import_job.inserted += len(batch)
             batch = []
+            time.sleep(0.01)
     if batch:
         repo.insert_events(batch)
         import_job.inserted += len(batch)
