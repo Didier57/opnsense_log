@@ -48,6 +48,25 @@ async def _opnsense_sync_loop() -> None:
             await asyncio.sleep(30)
 
 
+async def _startup_filterlog_import() -> None:
+    """Fill the gap left while the container was down by importing OPNsense logs."""
+    await asyncio.sleep(5)
+    try:
+        cfg = get_opnsense_settings(mask_password=False)
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not read OPNsense settings for startup import")
+        return
+    if not cfg.get("opnsense_host") or not cfg.get("opnsense_import_on_start", True):
+        return
+    try:
+        from .opnsense.filterlog_import import start_import
+
+        if start_import():
+            logger.info("Startup OPNsense filter log import started")
+    except Exception:  # noqa: BLE001
+        logger.exception("Startup filter log import failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
@@ -67,6 +86,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(_opnsense_sync_loop(), name="opnsense-sync"),
         asyncio.create_task(detection_loop(), name="detection"),
         asyncio.create_task(geo_update_loop(), name="geoip"),
+        asyncio.create_task(_startup_filterlog_import(), name="filterlog-import"),
     ]
     yield
     logger.info("Shutting down")

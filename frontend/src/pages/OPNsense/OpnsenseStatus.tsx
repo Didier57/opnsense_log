@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api/client";
 import { SyncButton } from "../../components/SyncButton";
+import { FilterlogImportPanel } from "../../components/FilterlogImportPanel";
 
 export function OpnsenseStatus() {
   const [status, setStatus] = useState<Record<string, any> | null>(null);
@@ -56,6 +57,7 @@ export function OpnsenseStatus() {
           !error && <p className="muted">Chargement…</p>
         )}
       </div>
+      <FilterlogImportPanel />
     </>
   );
 }

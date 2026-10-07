@@ -12,6 +12,7 @@ from . import (
     live,
     logs,
     lookup,
+    opnsense_import,
     rules,
     search,
     settings,
@@ -22,6 +23,6 @@ from . import (
 api_router = APIRouter()
 for module in (
     health, auth, logs, search, statistics, filters, rules, interfaces,
-    settings, system, export, live, lookup, detection, geoip,
+    settings, system, export, live, lookup, detection, geoip, opnsense_import,
 ):
     api_router.include_router(module.router)

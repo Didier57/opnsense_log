@@ -31,3 +31,6 @@ backend/static/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local notes (kept on this machine only)
+TODO.md

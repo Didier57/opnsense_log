@@ -19,6 +19,7 @@ _KEYS = [
     "opnsense_key_path",
     "opnsense_sync_enabled",
     "opnsense_sync_interval_min",
+    "opnsense_import_on_start",
 ]
 
 
@@ -48,6 +49,7 @@ def get_opnsense_settings(mask_password: bool = True) -> dict:
         "opnsense_key_path": value("opnsense_key_path"),
         "opnsense_sync_enabled": _as_bool(value("opnsense_sync_enabled")),
         "opnsense_sync_interval_min": int(value("opnsense_sync_interval_min") or 30),
+        "opnsense_import_on_start": _as_bool(value("opnsense_import_on_start")),
         "has_password": bool(value("opnsense_password")),
     }
     if not mask_password:

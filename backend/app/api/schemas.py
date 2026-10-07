@@ -43,6 +43,7 @@ class OPNsenseSettings(BaseModel):
     opnsense_key_path: str | None = None
     opnsense_sync_enabled: bool | None = None
     opnsense_sync_interval_min: int | None = None
+    opnsense_import_on_start: bool | None = None
 
 
 class ApplicationSettings(BaseModel):

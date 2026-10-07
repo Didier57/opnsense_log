@@ -102,6 +102,19 @@ class OPNsenseSSH:
         finally:
             client.close()
 
+    def read_lines(self, command: str):
+        """Stream a remote command's stdout line by line (never buffers the whole file).
+
+        Used to read large OPNsense filter log files (up to hundreds of MB).
+        """
+        client = self._connect()
+        try:
+            _, stdout, _ = client.exec_command(command, timeout=self.timeout)
+            for raw in stdout:
+                yield raw.decode("utf-8", errors="replace").rstrip("\r\n")
+        finally:
+            client.close()
+
     def test_connection(self) -> bool:
         try:
             self.run("echo ok")

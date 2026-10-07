@@ -126,3 +126,20 @@ export interface Overview {
   protocols: TopItem[];
   rules: TopItem[];
 }
+
+export interface FilterlogImportStatus {
+  running: boolean;
+  started_at: string | null;
+  finished_at: string | null;
+  current_file: string | null;
+  error: string | null;
+  files_total: number;
+  files_scanned: number;
+  files_imported: number;
+  files_skipped: number;
+  lines: number;
+  parsed: number;
+  invalid: number;
+  skipped: number;
+  inserted: number;
+}

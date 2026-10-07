@@ -1,6 +1,7 @@
 import type {
   Alert,
   FirewallEvent,
+  FilterlogImportStatus,
   GeoItem,
   OpnsenseInterface,
   OpnsenseRule,
@@ -114,6 +115,13 @@ export const api = {
 
   rules: () => request<{ items: OpnsenseRule[] }>("/api/rules"),
   syncRules: () => request<{ ok: boolean }>("/api/rules/sync", { method: "POST" }),
+  importFilterlog: (full = false) =>
+    request<{ ok: boolean; started: boolean; status: FilterlogImportStatus }>(
+      `/api/opnsense/filterlog/import?full=${full}`,
+      { method: "POST" },
+    ),
+  importFilterlogStatus: () =>
+    request<FilterlogImportStatus>("/api/opnsense/filterlog/import/status"),
   interfaces: () => request<{ items: OpnsenseInterface[] }>("/api/interfaces"),
 
   lookupHostnames: (ips: string[]) =>

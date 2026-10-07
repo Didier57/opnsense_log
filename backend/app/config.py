@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     opnsense_key_path: str = ""
     opnsense_sync_interval_min: int = 30
     opnsense_sync_enabled: bool = False
+    # Import firewall logs directly from the OPNsense log files over SSH on startup.
+    opnsense_import_on_start: bool = True
 
     # --- Auth ---
     auth_enabled: bool = True

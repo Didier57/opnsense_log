@@ -27,6 +27,7 @@ export function OpnsenseSettings() {
           next[field.key] = data[field.key] ?? "";
         });
         next.opnsense_sync_enabled = Boolean(data.opnsense_sync_enabled);
+        next.opnsense_import_on_start = Boolean(data.opnsense_import_on_start);
         setHasPassword(Boolean(data.has_password));
         setForm(next);
       })
@@ -89,6 +90,14 @@ export function OpnsenseSettings() {
             onChange={(e) => setForm({ ...form, opnsense_sync_enabled: e.target.checked })}
           />
           Activer la synchronisation automatique
+        </label>
+        <label className="filters">
+          <input
+            type="checkbox"
+            checked={Boolean(form.opnsense_import_on_start)}
+            onChange={(e) => setForm({ ...form, opnsense_import_on_start: e.target.checked })}
+          />
+          Récupérer les logs OPNsense (fichiers) au démarrage de l'application
         </label>
         {message && <p className="muted">{message}</p>}
         {error && <p className="error">{error}</p>}
