@@ -1,9 +1,10 @@
 """Generate an OPNsense API key over SSH.
 
 OPNsense has no CLI to create API keys, so we run a small PHP snippet on the
-firewall that mirrors the GUI: it appends a new key/secret pair (secret stored
-hashed) to the target user's ``apikeys`` and writes the configuration. The
-plaintext key/secret are printed once and captured immediately.
+firewall that mirrors the GUI exactly: it uses the ``OPNsense\\Auth\\User`` MVC
+model, calls ``apikeys->add()`` (which stores the secret hashed), persists the
+configuration and prints the plaintext key/secret once. The SSH connection is
+built from the runtime settings saved in the web UI (not the env defaults).
 """
 from __future__ import annotations
 
@@ -11,51 +12,45 @@ import base64
 import logging
 import re
 
+from .settings_store import get_opnsense_settings
 from .ssh import OPNsenseSSH, SSHError
 
 logger = logging.getLogger("opnsense.apikeygen")
 
 _KEY_RE = re.compile(r"^KEY=(\S+)$", re.M)
 _SECRET_RE = re.compile(r"^SECRET=(\S+)$", re.M)
+_USERNAME_RE = re.compile(r"[A-Za-z0-9_.-]+")
 
 _PHP = r"""<?php
 require_once('config.inc');
-require_once('util.inc');
-global $config;
-$name = 'root';
-$rand = function ($n) {
-    return rtrim(strtr(base64_encode(random_bytes($n)), '+/', '-_'), '=');
-};
-$key = $rand(24);
-$secret = $rand(24);
-$salt = rtrim(strtr(base64_encode(random_bytes(9)), '+/', './'), '=');
-$hash = crypt($secret, '$6$' . $salt . '$');
-$found = false;
-if (!isset($config['system']['user']) || !is_array($config['system']['user'])) {
-    $config['system']['user'] = array();
-}
-foreach ($config['system']['user'] as $i => $u) {
-    if (isset($u['name']) && $u['name'] === $name) {
-        if (!isset($config['system']['user'][$i]['apikeys']['item'])) {
-            $config['system']['user'][$i]['apikeys']['item'] = array();
-        }
-        $config['system']['user'][$i]['apikeys']['item'][] = array(
-            'key' => $key,
-            'secret' => $hash,
-            'descr' => 'OPNsense_log',
-        );
-        $found = true;
-        break;
-    }
-}
-if (!$found) {
+$model = new \OPNsense\Auth\User();
+$user = $model->getUserByName('__USERNAME__');
+if ($user === null) {
     fwrite(STDERR, "user not found\n");
     exit(1);
 }
-write_config('API key created by OPNsense Log Analyzer');
-echo "KEY=" . $key . "\n";
-echo "SECRET=" . $secret . "\n";
+$tmp = $user->apikeys->add();
+if (empty($tmp) || empty($tmp['key']) || empty($tmp['secret'])) {
+    fwrite(STDERR, "could not create key\n");
+    exit(1);
+}
+$model->serializeToConfig(false, true);
+\OPNsense\Core\Config::getInstance()->save();
+echo "KEY=" . $tmp['key'] . "\n";
+echo "SECRET=" . $tmp['secret'] . "\n";
 """
+
+
+def _build_ssh() -> OPNsenseSSH:
+    cfg = get_opnsense_settings(mask_password=False)
+    return OPNsenseSSH(
+        host=cfg["opnsense_host"],
+        port=cfg["opnsense_ssh_port"],
+        username=cfg["opnsense_username"],
+        auth_type=cfg["opnsense_auth_type"],
+        password=cfg.get("opnsense_password"),
+        key_path=cfg["opnsense_key_path"],
+    )
 
 
 def generate_api_key(username: str = "root") -> dict:
@@ -63,7 +58,8 @@ def generate_api_key(username: str = "root") -> dict:
 
     Returns ``{"ok": bool, "key"?, "secret"?, "error"?}``.
     """
-    script = _PHP.replace("$name = 'root';", f"$name = '{username}';")
+    safe_username = username if _USERNAME_RE.fullmatch(username or "") else "root"
+    script = _PHP.replace("__USERNAME__", safe_username)
     encoded = base64.b64encode(script.encode("utf-8")).decode("ascii")
     command = (
         "sh -c 'echo " + encoded + " | base64 -d > /tmp/ola_apikey.php; "
@@ -71,7 +67,7 @@ def generate_api_key(username: str = "root") -> dict:
         "rm -f /tmp/ola_apikey.php'"
     )
     try:
-        ssh = OPNsenseSSH()
+        ssh = _build_ssh()
         output = ssh.run(command)
     except SSHError as exc:
         logger.warning("API key generation failed: %s", exc)
