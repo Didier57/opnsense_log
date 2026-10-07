@@ -132,7 +132,14 @@ export function GeoipSettings() {
             <li>
               Fichier : <span className="mono">{String(status.path ?? "")}</span>
             </li>
-            <li>Mise à jour : {status.updated_at ? String(status.updated_at) : "—"}</li>
+            <li>
+              Mise à jour :{" "}
+              {status.updated_at_display
+                ? String(status.updated_at_display)
+                : status.updated_at
+                  ? String(status.updated_at)
+                  : "—"}
+            </li>
           </ul>
         ) : (
           <p className="muted">Chargement…</p>

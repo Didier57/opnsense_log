@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 import maxminddb
 
@@ -220,12 +221,38 @@ class GeoResolver:
             "database": path.is_file(),
             "path": str(path),
             "updated_at": updated_at,
+            "updated_at_display": _fmt_local(updated_at),
             "source": "maxmind" if geo["has_license_key"] else "db-ip",
             "has_license_key": geo["has_license_key"],
         }
 
 
 geo_resolver = GeoResolver()
+
+
+def _display_tz():
+    try:
+        from ..settings_store import get_app_settings
+
+        name = get_app_settings().get("display_timezone") or settings.display_timezone or "UTC"
+    except Exception:  # noqa: BLE001
+        name = settings.display_timezone or "UTC"
+    try:
+        return ZoneInfo(name)
+    except Exception:  # noqa: BLE001
+        return timezone.utc
+
+
+def _fmt_local(iso: str | None) -> str | None:
+    if not iso:
+        return None
+    try:
+        dt = datetime.fromisoformat(iso)
+    except ValueError:
+        return iso
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(_display_tz()).strftime("%d/%m/%Y %H:%M:%S")
 
 
 def _redact(url: str) -> str:
