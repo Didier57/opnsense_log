@@ -2,15 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, liveSocketUrl } from "../../api/client";
 import { StatCard } from "../../components/StatCard";
 import { BarList } from "../../components/Charts/BarList";
-import type { Summary, TopItem } from "../../types";
+import type { Overview, Summary } from "../../types";
 
 const INTERVALS = [5, 10, 30, 60];
 
 export function Dashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [topSrc, setTopSrc] = useState<TopItem[]>([]);
-  const [topPorts, setTopPorts] = useState<TopItem[]>([]);
-  const [topRules, setTopRules] = useState<TopItem[]>([]);
+  const [overview, setOverview] = useState<Overview | null>(null);
   const [auto, setAuto] = useState(true);
   const [intervalSec, setIntervalSec] = useState(5);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
@@ -22,16 +20,9 @@ export function Dashboard() {
     inflight.current = true;
     setRefreshing(true);
     try {
-      const [s, src, ports, rules] = await Promise.all([
-        api.summary(),
-        api.top("src_ip", undefined, undefined, 10),
-        api.top("dst_port", undefined, undefined, 10),
-        api.top("rule_id", undefined, undefined, 10),
-      ]);
+      const [s, ov] = await Promise.all([api.summary(), api.overview()]);
       setSummary(s);
-      setTopSrc(src.items);
-      setTopPorts(ports.items);
-      setTopRules(rules.items);
+      setOverview(ov);
       setUpdatedAt(new Date());
     } catch {
       /* keep the previous values on transient errors */
@@ -82,6 +73,12 @@ export function Dashboard() {
     };
   }, [auto, load]);
 
+  const countries = (overview?.countries ?? []).map((c) => ({
+    value: c.value,
+    label: `${c.name} (${c.value})`,
+    count: c.count,
+  }));
+
   return (
     <>
       <div className="topbar">
@@ -115,9 +112,18 @@ export function Dashboard() {
         <StatCard label="Interfaces" value={summary?.interfaces ?? 0} />
       </div>
       <div className="grid-3">
-        <BarList title="Principales IP sources" items={topSrc} />
-        <BarList title="Principaux ports de destination" items={topPorts} />
-        <BarList title="Principales règles" items={topRules} />
+        <BarList title="Pays sources" items={countries} flags />
+        <BarList title="Principales IP sources externes" items={overview?.src_external ?? []} />
+        <BarList title="Principales IP sources internes" items={overview?.src_internal ?? []} />
+      </div>
+      <div className="grid-3">
+        <BarList title="Principales IP destinations externes" items={overview?.dst_external ?? []} />
+        <BarList title="Principales IP destinations internes" items={overview?.dst_internal ?? []} />
+        <BarList title="Principaux ports de destination" items={overview?.dst_ports ?? []} />
+      </div>
+      <div className="grid-2">
+        <BarList title="Protocoles" items={overview?.protocols ?? []} />
+        <BarList title="Principales règles" items={overview?.rules ?? []} />
       </div>
     </>
   );

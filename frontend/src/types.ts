@@ -110,3 +110,14 @@ export interface GeoItem {
   name: string;
   count: number;
 }
+
+export interface Overview {
+  countries: GeoItem[];
+  src_external: TopItem[];
+  src_internal: TopItem[];
+  dst_external: TopItem[];
+  dst_internal: TopItem[];
+  dst_ports: TopItem[];
+  protocols: TopItem[];
+  rules: TopItem[];
+}

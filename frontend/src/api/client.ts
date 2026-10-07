@@ -4,6 +4,7 @@ import type {
   GeoItem,
   OpnsenseInterface,
   OpnsenseRule,
+  Overview,
   SavedFilter,
   SearchRequest,
   SearchResult,
@@ -141,6 +142,12 @@ export const api = {
     if (end) query.set("end", end);
     query.set("limit", String(limit));
     return request<{ items: GeoItem[] }>(`/api/statistics/countries?${query.toString()}`);
+  },
+  overview: (start?: string, end?: string) => {
+    const query = new URLSearchParams();
+    if (start) query.set("start", start);
+    if (end) query.set("end", end);
+    return request<Overview>(`/api/statistics/overview?${query.toString()}`);
   },
 
   settings: () => request<Record<string, unknown>>("/api/settings"),
