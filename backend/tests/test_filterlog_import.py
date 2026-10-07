@@ -111,6 +111,47 @@ def test_run_import_empty_db_skips_all(database, monkeypatch):
     assert EventRepository().count() == 0
 
 
+def test_heartbeat_roundtrip(database):
+    when = datetime(2026, 10, 6, 9, 30, tzinfo=timezone.utc)
+    fi.set_last_run(when)
+    assert fi._get_last_run(EventRepository()) == when
+
+
+def test_run_import_fills_mid_day_gap_via_heartbeat(database, monkeypatch):
+    path = "/var/log/filter/filter_20261006.log"
+    repo = EventRepository()
+    # Seed records at 07:00 and 10:00 so the newest stored event is 10:00.
+    seed = FakeSSH([], {f"cat {path}": [LINE_07H, LINE_10H]})
+    fi.import_job._reset_run()
+    fi._import_file(repo, seed, path, None, None)
+    assert repo.count() == 2
+    # The heartbeat says the app was up until 07:30, so the 08:00 record is a
+    # mid-day gap that must be filled even though 10:00 is already stored.
+    fi.set_last_run(datetime(2026, 10, 6, 7, 30, tzinfo=timezone.utc))
+    ssh = FakeSSH([path], {f"cat {path}": [LINE_08H]})
+    monkeypatch.setattr(fi, "_build_ssh", lambda: ssh)
+    result = fi.run_import()
+    assert result["error"] is None
+    assert result["inserted"] == 1
+    assert repo.count() == 3
+
+
+def test_run_import_skips_covered_day(database, monkeypatch):
+    path = "/var/log/filter/filter_20261006.log"
+    repo = EventRepository()
+    seed = FakeSSH([], {f"cat {path}": [LINE_10H]})
+    fi.import_job._reset_run()
+    fi._import_file(repo, seed, path, None, None)
+    # Heartbeat after the day is over -> the whole day file must be skipped.
+    fi.set_last_run(datetime(2026, 10, 8, tzinfo=timezone.utc))
+    ssh = FakeSSH([path], {f"cat {path}": [LINE_08H]})
+    monkeypatch.setattr(fi, "_build_ssh", lambda: ssh)
+    result = fi.run_import()
+    assert result["files_skipped"] == 1
+    assert result["inserted"] == 0
+    assert repo.count() == 1
+
+
 def test_start_import_rejects_concurrent():
     fi.import_job._reset_run()
     fi.import_job.running = True

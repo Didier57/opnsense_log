@@ -8,10 +8,14 @@ Records are syslog framed (they start with a ``<PRI>`` marker) but are NOT
 reliably newline separated (several records can be concatenated on one line),
 so the stream is split on the ``<PRI>`` marker instead of newlines.
 
-The importer fills the gap left while the container was down: for every day file
-it only imports lines whose event time is newer than the newest event already
-stored for that day.  Days that are already covered are skipped without reading
-the file (only a cheap per-day aggregate is run).
+The importer fills the gap left while the container was down.  The gap is the
+downtime window ``(last_run, now)`` where ``last_run`` is a persistent heartbeat
+recorded while the application is running.  Every day file is intersected with
+this window and only the matching records are imported, so a gap located in the
+middle of a day (or spanning several days) is filled too, without re-reading
+days that are already covered.  When the database is still empty nothing is
+imported automatically (a heavy full history backfill is left to the manual
+button).  ``full=True`` re-imports every line regardless of the window.
 """
 from __future__ import annotations
 
@@ -132,17 +136,40 @@ def _list_log_files(ssh: OPNsenseSSH) -> list[str]:
     return sorted(line.strip() for line in output.splitlines() if line.strip())
 
 
-def _max_event_time(repo: EventRepository, start: datetime, end: datetime) -> datetime | None:
-    row = repo.db.execute_read(
-        'SELECT MAX("event_time") FROM events WHERE "event_time" >= ? AND "event_time" < ?',
-        [start, end],
-    ).fetchone()
-    return row[0] if row else None
-
-
 def _global_max_event_time(repo: EventRepository) -> datetime | None:
     row = repo.db.execute_read('SELECT MAX("event_time") FROM events').fetchone()
     return row[0] if row else None
+
+
+_LAST_RUN_KEY = "import_last_run_at"
+
+
+def _get_last_run(repo: EventRepository) -> datetime | None:
+    """Return the last recorded heartbeat (when the app was known to be up)."""
+    try:
+        row = repo.db.execute_read(
+            'SELECT "value" FROM app_settings WHERE "key" = ?', [_LAST_RUN_KEY]
+        ).fetchone()
+    except Exception:  # noqa: BLE001 - best effort
+        return None
+    if not row or not row[0]:
+        return None
+    try:
+        value = datetime.fromisoformat(row[0])
+    except ValueError:
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def set_last_run(when: datetime | None = None) -> None:
+    """Persist a heartbeat so the next startup knows the downtime window."""
+    moment = (when or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    repo = EventRepository()
+    repo.db.execute_write(
+        'INSERT INTO app_settings ("key", "value", "updated_at") VALUES (?, ?, now()) '
+        'ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value", "updated_at" = now()',
+        [_LAST_RUN_KEY, moment.isoformat()],
+    )
 
 
 def _iter_records(ssh: OPNsenseSSH, path: str):
@@ -171,9 +198,16 @@ def _import_file(
     repo: EventRepository,
     ssh: OPNsenseSSH,
     path: str,
-    after: datetime | None,
-    before: datetime | None,
+    after: datetime | None = None,
+    before: datetime | None = None,
+    windows: list[tuple[datetime, datetime]] | None = None,
 ) -> None:
+    """Import records from a remote file.
+
+    When ``windows`` is given, only records whose event time falls inside one of
+    the ``[start, end)`` windows are kept; otherwise the ``after``/``before``
+    bounds are used.
+    """
     batch = []
     for record in _iter_records(ssh, path):
         import_job.lines += 1
@@ -186,7 +220,11 @@ def _import_file(
             import_job.invalid += 1
             continue
         when = event.event_time
-        if (after is not None and when <= after) or (before is not None and when >= before):
+        if windows is not None:
+            if not any(start <= when < end for start, end in windows):
+                import_job.skipped += 1
+                continue
+        elif (after is not None and when <= after) or (before is not None and when >= before):
             import_job.skipped += 1
             continue
         batch.append(event)
@@ -216,34 +254,44 @@ def run_import(full: bool = False) -> dict:
         files = _list_log_files(ssh)
         import_job.files_total = len(files)
         logger.info("Filter log import: %d file(s) found", len(files))
-        # In gap mode we only fill the downtime gap: skip any day that is
-        # already in the past relative to the newest stored event (and backfill
-        # nothing at all when the database is still empty, so a fresh install
-        # never triggers a heavy multi-day scan).
+        # In gap mode we only fill the downtime window (last heartbeat, now):
+        # each day file is intersected with it, so gaps sitting in the middle of
+        # a day are filled too, while days already covered are never read. When
+        # the database is empty (fresh install) nothing is imported automatically
+        # so startup never triggers a heavy multi-day scan.
         overall = None if full else _global_max_event_time(repo)
+        last_run = None if full else _get_last_run(repo)
+        now = datetime.now(timezone.utc)
         for path in files:
             import_job.current_file = path
-            after = None
-            before = None
             day = _file_day(path)
-            if day is not None:
-                start, end = _day_window(day)
-                before = end
-                if not full:
-                    if overall is None or end <= overall:
-                        import_job.files_skipped += 1
-                        import_job.files_scanned += 1
-                        continue
-                    existing = _max_event_time(repo, start, end)
-                    if existing is not None:
-                        if existing >= end:
-                            import_job.files_skipped += 1
-                            import_job.files_scanned += 1
-                            continue
-                        after = existing
-            _import_file(repo, ssh, path, after, before)
+            if full or day is None:
+                _import_file(repo, ssh, path)
+                import_job.files_imported += 1
+                import_job.files_scanned += 1
+                continue
+            start, end = _day_window(day)
+            if overall is None:
+                import_job.files_skipped += 1
+                import_job.files_scanned += 1
+                continue
+            lower = last_run or overall
+            window_start = max(start, lower)
+            window_end = min(end, now)
+            if window_start >= window_end:
+                import_job.files_skipped += 1
+                import_job.files_scanned += 1
+                continue
+            _import_file(repo, ssh, path, windows=[(window_start, window_end)])
             import_job.files_imported += 1
             import_job.files_scanned += 1
+        if not full:
+            # Record that we are up to date so the next restart only re-scans
+            # the downtime window.
+            try:
+                set_last_run(now)
+            except Exception:  # noqa: BLE001 - heartbeat must not fail the job
+                logger.exception("Could not persist import heartbeat")
         logger.info(
             "Filter log import done: %d file(s), %d line(s), %d inserted",
             import_job.files_imported,

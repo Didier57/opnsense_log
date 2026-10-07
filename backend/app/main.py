@@ -67,6 +67,22 @@ async def _startup_filterlog_import() -> None:
         logger.exception("Startup filter log import failed")
 
 
+async def _filterlog_heartbeat_loop() -> None:
+    """Persist a periodic heartbeat while the application runs.
+
+    The heartbeat marks the last moment the app was known to be up, so the next
+    startup can compute the precise downtime window and only fill that gap.
+    """
+    from .opnsense.filterlog_import import set_last_run
+
+    while True:
+        try:
+            await asyncio.to_thread(set_last_run)
+        except Exception:  # noqa: BLE001
+            logger.exception("Could not record filter log import heartbeat")
+        await asyncio.sleep(30)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
@@ -87,6 +103,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(detection_loop(), name="detection"),
         asyncio.create_task(geo_update_loop(), name="geoip"),
         asyncio.create_task(_startup_filterlog_import(), name="filterlog-import"),
+        asyncio.create_task(_filterlog_heartbeat_loop(), name="filterlog-heartbeat"),
     ]
     yield
     logger.info("Shutting down")
