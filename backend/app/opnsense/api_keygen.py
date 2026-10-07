@@ -24,6 +24,7 @@ _USERNAME_RE = re.compile(r"[A-Za-z0-9_.-]+")
 
 _PHP = r"""<?php
 require_once('config.inc');
+require_once('util.inc');
 global $config;
 $name = '__USERNAME__';
 $key = rtrim(strtr(base64_encode(random_bytes(60)), '+/', '-_'), '=');
