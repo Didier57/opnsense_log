@@ -17,6 +17,10 @@ LINE_08H = (
     "<134>1 2026-10-06T08:00:00+00:00 host filterlog 1 - [meta sequenceId=\"2\"] "
     "6,,,abcd,vtnet0,match,block,in,4,0x0,,64,1,0,DF,6,tcp,60,9.9.9.9,10.0.0.1,5555,22,0,S,1,,64240,,"
 )
+LINE_07H = (
+    "<134>1 2026-10-06T07:00:00+00:00 host filterlog 1 - [meta sequenceId=\"0\"] "
+    "7,,,abcd,vtnet0,match,pass,out,4,0x0,,64,1,0,DF,6,tcp,60,10.0.0.1,1.1.1.1,1,80,0,S,1,,64240,,"
+)
 
 
 @pytest.fixture()
@@ -80,6 +84,11 @@ def test_import_file_splits_concatenated_records(database):
 
 def test_run_import_gap_mode(database, monkeypatch):
     path = "/var/log/filter/filter_20261006.log"
+    repo = EventRepository()
+    # Seed one older event so the day is only partially covered (gap to fill).
+    seed = FakeSSH([], {f"cat {path}": [LINE_07H]})
+    fi.import_job._reset_run()
+    fi._import_file(repo, seed, path, None, None)
     ssh = FakeSSH([path], {f"cat {path}": [LINE_10H, LINE_08H]})
     monkeypatch.setattr(fi, "_build_ssh", lambda: ssh)
     result = fi.run_import()
@@ -87,7 +96,19 @@ def test_run_import_gap_mode(database, monkeypatch):
     assert result["files_total"] == 1
     assert result["files_imported"] == 1
     assert result["inserted"] == 2
-    assert EventRepository().count() == 2
+    assert repo.count() == 3
+
+
+def test_run_import_empty_db_skips_all(database, monkeypatch):
+    path = "/var/log/filter/filter_20261006.log"
+    ssh = FakeSSH([path], {f"cat {path}": [LINE_10H, LINE_08H]})
+    monkeypatch.setattr(fi, "_build_ssh", lambda: ssh)
+    result = fi.run_import()
+    assert result["error"] is None
+    assert result["files_skipped"] == 1
+    assert result["files_imported"] == 0
+    assert result["inserted"] == 0
+    assert EventRepository().count() == 0
 
 
 def test_start_import_rejects_concurrent():

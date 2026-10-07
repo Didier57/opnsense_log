@@ -140,6 +140,11 @@ def _max_event_time(repo: EventRepository, start: datetime, end: datetime) -> da
     return row[0] if row else None
 
 
+def _global_max_event_time(repo: EventRepository) -> datetime | None:
+    row = repo.db.execute_read('SELECT MAX("event_time") FROM events').fetchone()
+    return row[0] if row else None
+
+
 def _iter_records(ssh: OPNsenseSSH, path: str):
     """Yield complete syslog records from a remote file.
 
@@ -190,7 +195,9 @@ def _import_file(
             repo.insert_events(batch)
             import_job.inserted += len(batch)
             batch = []
-            time.sleep(0.01)
+            # Yield the CPU between batches so a large backfill does not peg a
+            # core on low-power firewalls/servers.
+            time.sleep(0.05)
     if batch:
         repo.insert_events(batch)
         import_job.inserted += len(batch)
@@ -209,6 +216,11 @@ def run_import(full: bool = False) -> dict:
         files = _list_log_files(ssh)
         import_job.files_total = len(files)
         logger.info("Filter log import: %d file(s) found", len(files))
+        # In gap mode we only fill the downtime gap: skip any day that is
+        # already in the past relative to the newest stored event (and backfill
+        # nothing at all when the database is still empty, so a fresh install
+        # never triggers a heavy multi-day scan).
+        overall = None if full else _global_max_event_time(repo)
         for path in files:
             import_job.current_file = path
             after = None
@@ -218,6 +230,10 @@ def run_import(full: bool = False) -> dict:
                 start, end = _day_window(day)
                 before = end
                 if not full:
+                    if overall is None or end <= overall:
+                        import_job.files_skipped += 1
+                        import_job.files_scanned += 1
+                        continue
                     existing = _max_event_time(repo, start, end)
                     if existing is not None:
                         if existing >= end:
