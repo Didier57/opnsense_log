@@ -102,6 +102,23 @@ class OPNsenseSSH:
         finally:
             client.close()
 
+    def read_chunks(self, command: str, size: int = 65536):
+        """Stream a remote command's stdout as decoded text chunks.
+
+        Used for very large OPNsense filter log files where a single record may
+        not be newline separated; callers reassemble records themselves.
+        """
+        client = self._connect()
+        try:
+            _, stdout, _ = client.exec_command(command, timeout=self.timeout)
+            while True:
+                data = stdout.read(size)
+                if not data:
+                    break
+                yield data.decode("utf-8", errors="replace")
+        finally:
+            client.close()
+
     def read_lines(self, command: str):
         """Stream a remote command's stdout line by line (never buffers the whole file).
 

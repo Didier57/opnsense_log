@@ -42,6 +42,11 @@ class FakeSSH:
         for line in self._lines.get(command, []):
             yield line
 
+    def read_chunks(self, command, size=65536):
+        data = "\n".join(self._lines.get(command, []))
+        if data:
+            yield data
+
 
 def test_file_day_parses_date():
     assert fi._file_day("/var/log/filter/filter_20261006.log") == datetime(2026, 10, 6)
@@ -59,6 +64,18 @@ def test_import_file_respects_watermark(database):
     assert fi.import_job.skipped == 1
     assert fi.import_job.invalid == 0
     assert repo.count() == 1
+
+
+def test_import_file_splits_concatenated_records(database):
+    repo = EventRepository()
+    path = "/var/log/filter/filter_20261006.log"
+    blob = LINE_10H + LINE_08H  # two records concatenated with no separator
+    ssh = FakeSSH([], {f"cat {path}": [blob]})
+    fi.import_job._reset_run()
+    fi._import_file(repo, ssh, path, None, None)
+    assert fi.import_job.parsed == 2
+    assert fi.import_job.inserted == 2
+    assert repo.count() == 2
 
 
 def test_run_import_gap_mode(database, monkeypatch):

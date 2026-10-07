@@ -2,7 +2,11 @@
 
 OPNsense keeps one file per day in ``/var/log/filter/filter_YYYYMMDD.log``
 (``latest.log`` is a symlink to the current file).  Files can be several
-hundred MB, so they are streamed line by line and inserted in batches.
+hundred MB, so they are streamed in chunks and inserted in batches.
+
+Records are syslog framed (they start with a ``<PRI>`` marker) but are NOT
+reliably newline separated (several records can be concatenated on one line),
+so the stream is split on the ``<PRI>`` marker instead of newlines.
 
 The importer fills the gap left while the container was down: for every day file
 it only imports lines whose event time is newer than the newest event already
@@ -26,7 +30,9 @@ logger = logging.getLogger("opnsense.filterlog_import")
 
 LOG_DIR = "/var/log/filter"
 BATCH_SIZE = 5000
+CHUNK_SIZE = 65536
 _DATE_RE = re.compile(r"filter_(\d{8})\.log$")
+_PRI_RE = re.compile(r"<\d{1,3}>")
 
 
 class ImportJob:
@@ -133,6 +139,28 @@ def _max_event_time(repo: EventRepository, start: datetime, end: datetime) -> da
     return row[0] if row else None
 
 
+def _iter_records(ssh: OPNsenseSSH, path: str):
+    """Yield complete syslog records from a remote file.
+
+    Records start with a ``<PRI>`` marker and may be concatenated without a
+    newline, so the stream is reassembled from chunks and split on ``<PRI>``.
+    """
+    buffer = ""
+    for chunk in ssh.read_chunks(f"cat {path}", CHUNK_SIZE):
+        buffer += chunk
+        while True:
+            marks = list(_PRI_RE.finditer(buffer))
+            if len(marks) < 2:
+                break
+            yield buffer[marks[0].start():marks[1].start()]
+            buffer = buffer[marks[1].start():]
+    marks = list(_PRI_RE.finditer(buffer))
+    if marks:
+        tail = buffer[marks[0].start():].strip()
+        if tail:
+            yield tail
+
+
 def _import_file(
     repo: EventRepository,
     ssh: OPNsenseSSH,
@@ -141,9 +169,9 @@ def _import_file(
     before: datetime | None,
 ) -> None:
     batch = []
-    for line in ssh.read_lines(f"cat {path}"):
+    for record in _iter_records(ssh, path):
         import_job.lines += 1
-        stripped = line.strip()
+        stripped = record.strip()
         if not stripped:
             continue
         result = parse_message(stripped)
