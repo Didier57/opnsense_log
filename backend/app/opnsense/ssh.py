@@ -102,6 +102,21 @@ class OPNsenseSSH:
         finally:
             client.close()
 
+    def run_capture(self, command: str) -> tuple[str, str]:
+        """Run a command and return ``(stdout, stderr)`` without raising on stderr.
+
+        Used for scripts that print useful output on stdout while also emitting
+        diagnostics on stderr.
+        """
+        client = self._connect()
+        try:
+            _, stdout, stderr = client.exec_command(command, timeout=self.timeout)
+            out = stdout.read().decode("utf-8", errors="replace")
+            err = stderr.read().decode("utf-8", errors="replace")
+            return out, err
+        finally:
+            client.close()
+
     def read_chunks(self, command: str, size: int = 65536):
         """Stream a remote command's stdout as decoded text chunks.
 

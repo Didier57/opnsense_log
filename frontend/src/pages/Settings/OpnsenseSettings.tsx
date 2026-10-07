@@ -159,13 +159,15 @@ export function OpnsenseSettings() {
             <label className="muted" style={{ display: "block", marginBottom: 4 }}>
               {field.label}
               {field.key === "opnsense_password" && hasPassword ? " (un mot de passe est enregistré)" : ""}
+              {field.key === "opnsense_api_key" && hasApiKey ? " (une clé est enregistrée)" : ""}
             </label>
             <input
               type={field.type || "text"}
               value={form[field.key] ?? ""}
               placeholder={
                 (field.key === "opnsense_password" && hasPassword) ||
-                (field.key === "opnsense_api_secret" && hasApiSecret)
+                (field.key === "opnsense_api_secret" && hasApiSecret) ||
+                (field.key === "opnsense_api_key" && hasApiKey)
                   ? "••••••••"
                   : undefined
               }

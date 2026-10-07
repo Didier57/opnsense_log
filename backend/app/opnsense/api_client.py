@@ -66,8 +66,14 @@ class OPNsenseAPI:
         try:
             with self._client() as client:
                 response = client.post(path, json=json or {})
+        except httpx.TimeoutException as exc:
+            raise APIError(
+                f"OPNsense API timed out after {self.timeout}s on {self.base_url} — "
+                "vérifiez le port de l'API (celui de l'interface web HTTPS) et que "
+                "l'interface web du firewall est joignable depuis l'application"
+            ) from exc
         except httpx.HTTPError as exc:
-            raise APIError(f"OPNsense API request failed: {exc}") from exc
+            raise APIError(f"OPNsense API request failed on {self.base_url}: {exc}") from exc
         if response.status_code == 401:
             raise APIError("OPNsense API authentication failed (check key/secret)")
         if response.status_code >= 400:

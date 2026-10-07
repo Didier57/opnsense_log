@@ -1,9 +1,10 @@
 """Generate an OPNsense API key over SSH.
 
 OPNsense has no CLI to create API keys, so we run a small PHP snippet on the
-firewall that mirrors the GUI exactly: it uses the ``OPNsense\\Auth\\User`` MVC
-model, calls ``apikeys->add()`` (which stores the secret hashed), persists the
-configuration and prints the plaintext key/secret once. The SSH connection is
+firewall that mirrors the GUI: it appends a new ``key|hashed-secret`` pair to the
+target user's ``apikeys`` and persists the configuration with ``write_config``.
+The plaintext key/secret are printed once and captured immediately; the script
+also verifies that the key landed in ``/conf/config.xml``. The SSH connection is
 built from the runtime settings saved in the web UI (not the env defaults).
 """
 from __future__ import annotations
@@ -23,21 +24,51 @@ _USERNAME_RE = re.compile(r"[A-Za-z0-9_.-]+")
 
 _PHP = r"""<?php
 require_once('config.inc');
-$model = new \OPNsense\Auth\User();
-$user = $model->getUserByName('__USERNAME__');
-if ($user === null) {
+global $config;
+$name = '__USERNAME__';
+$key = rtrim(strtr(base64_encode(random_bytes(60)), '+/', '-_'), '=');
+$secret = rtrim(strtr(base64_encode(random_bytes(60)), '+/', '-_'), '=');
+$chars = './ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+$salt = '';
+for ($i = 0; $i < 16; $i++) {
+    $salt .= $chars[random_int(0, strlen($chars) - 1)];
+}
+$hash = crypt($secret, '$6$' . $salt . '$');
+$found = false;
+if (isset($config['system']['user']) && is_array($config['system']['user'])) {
+    foreach ($config['system']['user'] as $i => $u) {
+        if (isset($u['name']) && $u['name'] === $name) {
+            $existing = isset($config['system']['user'][$i]['apikeys']) ? $config['system']['user'][$i]['apikeys'] : array();
+            $items = array();
+            if (is_array($existing) && isset($existing['item'])) {
+                $items = $existing['item'];
+            } elseif (is_string($existing)) {
+                foreach (explode("\n", $existing) as $line) {
+                    $line = trim($line);
+                    if ($line === '') { continue; }
+                    $p = explode('|', $line, 2);
+                    $items[] = array('key' => $p[0], 'secret' => isset($p[1]) ? $p[1] : '');
+                }
+            }
+            $items[] = array('key' => $key, 'secret' => $hash);
+            $config['system']['user'][$i]['apikeys'] = array('item' => $items);
+            $found = true;
+            break;
+        }
+    }
+}
+if (!$found) {
     fwrite(STDERR, "user not found\n");
     exit(1);
 }
-$tmp = $user->apikeys->add();
-if (empty($tmp) || empty($tmp['key']) || empty($tmp['secret'])) {
-    fwrite(STDERR, "could not create key\n");
-    exit(1);
+write_config('API key created by OPNsense Log Analyzer');
+$saved = @file_get_contents('/conf/config.xml');
+if ($saved === false || strpos($saved, $key) === false) {
+    fwrite(STDERR, "config verification failed\n");
+    exit(2);
 }
-$model->serializeToConfig(false, true);
-\OPNsense\Core\Config::getInstance()->save();
-echo "KEY=" . $tmp['key'] . "\n";
-echo "SECRET=" . $tmp['secret'] . "\n";
+echo "KEY=" . $key . "\n";
+echo "SECRET=" . $secret . "\n";
 """
 
 
@@ -68,7 +99,7 @@ def generate_api_key(username: str = "root") -> dict:
     )
     try:
         ssh = _build_ssh()
-        output = ssh.run(command)
+        output, stderr = ssh.run_capture(command)
     except SSHError as exc:
         logger.warning("API key generation failed: %s", exc)
         return {"ok": False, "error": str(exc)}
@@ -79,5 +110,9 @@ def generate_api_key(username: str = "root") -> dict:
     key_match = _KEY_RE.search(output)
     secret_match = _SECRET_RE.search(output)
     if not key_match or not secret_match:
-        return {"ok": False, "error": "Could not read the generated API key"}
+        detail = (stderr.strip() or output.strip())[:400]
+        logger.warning("API key generation output: %s", detail)
+        return {"ok": False, "error": f"Could not read the generated API key: {detail}"}
+    if stderr.strip():
+        logger.warning("API key generation warnings: %s", stderr.strip()[:400])
     return {"ok": True, "key": key_match.group(1), "secret": secret_match.group(1)}
