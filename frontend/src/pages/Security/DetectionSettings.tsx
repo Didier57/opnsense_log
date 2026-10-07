@@ -48,6 +48,8 @@ interface BlockingForm {
   blocking_mode: string;
   blocking_whitelist: string;
   blocking_ttl_hours: number;
+  blocking_notify_email: boolean;
+  blocking_token_days: number;
 }
 
 const DEFAULT_BLOCKING: BlockingForm = {
@@ -56,6 +58,8 @@ const DEFAULT_BLOCKING: BlockingForm = {
   blocking_mode: "manual",
   blocking_whitelist: "",
   blocking_ttl_hours: 0,
+  blocking_notify_email: true,
+  blocking_token_days: 7,
 };
 
 export function DetectionSettings() {
@@ -78,6 +82,8 @@ export function DetectionSettings() {
           blocking_mode: String(data.blocking_mode ?? "manual"),
           blocking_whitelist: String(data.blocking_whitelist ?? ""),
           blocking_ttl_hours: Number(data.blocking_ttl_hours ?? 0),
+          blocking_notify_email: Boolean(data.blocking_notify_email ?? true),
+          blocking_token_days: Number(data.blocking_token_days ?? 7),
         }),
       )
       .catch(() => undefined);
@@ -282,7 +288,25 @@ export function DetectionSettings() {
               onChange={(e) => setBlocking({ ...blocking, blocking_ttl_hours: Number(e.target.value) })}
             />
           </label>
+          <label className="muted" style={{ fontSize: 12 }}>
+            Validité du lien de déblocage (jours)
+            <br />
+            <input
+              type="number"
+              min={1}
+              value={blocking.blocking_token_days}
+              onChange={(e) => setBlocking({ ...blocking, blocking_token_days: Number(e.target.value) })}
+            />
+          </label>
         </div>
+        <label className="filters">
+          <input
+            type="checkbox"
+            checked={blocking.blocking_notify_email}
+            onChange={(e) => setBlocking({ ...blocking, blocking_notify_email: e.target.checked })}
+          />
+          Envoyer un e-mail lors d'un blocage (avec un bouton « Débloquer » — nécessite SMTP et l'URL publique)
+        </label>
         <label className="muted" style={{ fontSize: 12 }}>
           Liste blanche (IP ou CIDR, séparés par des virgules — jamais bloqués)
           <br />

@@ -15,6 +15,7 @@ _KEYS = [
     "log_retention_days",
     "retention_check_interval_min",
     "display_timezone",
+    "public_url",
 ]
 
 
@@ -46,7 +47,13 @@ def get_app_settings() -> dict:
             5, _as_int(value("retention_check_interval_min"), settings.retention_check_interval_min)
         ),
         "display_timezone": str(value("display_timezone") or settings.display_timezone),
+        "public_url": str(value("public_url") or settings.public_url).strip().rstrip("/"),
     }
+
+
+def get_public_url() -> str:
+    """Base URL of the web UI (no trailing slash)."""
+    return get_app_settings().get("public_url", "") or ""
 
 
 def update_app_settings(payload: dict) -> dict:

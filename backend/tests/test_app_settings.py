@@ -18,6 +18,7 @@ def test_defaults_from_config(db):
         "log_retention_days",
         "retention_check_interval_min",
         "display_timezone",
+        "public_url",
     }
     assert cfg["log_retention_days"] >= 0
     assert cfg["retention_check_interval_min"] >= 5

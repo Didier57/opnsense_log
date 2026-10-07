@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 from ..storage.database import get_database
 from ..detection.blocking_store import get_blocking_settings
+from ..notifications.blocking_mail import send_block_notification
 from .api_client import APIError, OPNsenseAPI
 from .settings_store import get_opnsense_settings
 
@@ -82,7 +83,7 @@ def _record_blocked(ips: list[str], rule: str, source: str, ttl_hours: int) -> N
         )
 
 
-def apply_ips(ips: list[str], rule: str = "", source: str = "manual") -> dict:
+def apply_ips(ips: list[str], rule: str = "", source: str = "manual", reasons: dict | None = None) -> dict:
     """Add the given IPs to the configured alias and apply the change."""
     cfg = get_blocking_settings()
     alias = str(cfg.get("blocking_alias") or "").strip()
@@ -118,6 +119,16 @@ def apply_ips(ips: list[str], rule: str = "", source: str = "manual") -> dict:
         return {"ok": False, "error": str(exc), "added": []}
 
     _record_blocked(added, rule, source, int(cfg.get("blocking_ttl_hours", 0) or 0))
+    if added and cfg.get("blocking_notify_email", True):
+        try:
+            send_block_notification(
+                added,
+                rule=rule,
+                reasons=reasons,
+                days=int(cfg.get("blocking_token_days", 7) or 7),
+            )
+        except Exception:  # noqa: BLE001 - never fail a block because of e-mail
+            logger.exception("Could not send block notification")
     return {"ok": True, "added": added, "alias": alias}
 
 
@@ -130,7 +141,14 @@ def block_alerts(alerts: list[dict]) -> dict:
     ]
     if not ips:
         return {"ok": True, "added": [], "message": "Aucune alerte concernée"}
-    return apply_ips(ips, rule="detection", source="auto")
+    reasons: dict = {}
+    for alert in alerts:
+        ip = alert.get("src_ip")
+        if alert.get("rule") in _BLOCKABLE_RULES and ip:
+            detail = str(alert.get("message") or alert.get("title") or "").strip()
+            if detail:
+                reasons[ip] = detail
+    return apply_ips(ips, rule="detection", source="auto", reasons=reasons)
 
 
 def prune_expired() -> int:

@@ -18,7 +18,7 @@ def _recipients(raw: str) -> list[str]:
     return [addr.strip() for addr in raw.replace(";", ",").split(",") if addr.strip()]
 
 
-def send_email(subject: str, body: str, settings: dict | None = None) -> dict:
+def send_email(subject: str, body: str, settings: dict | None = None, html: str | None = None) -> dict:
     """Send an email. Never raises; returns ``{"ok": bool, "message": str}``."""
     cfg = settings or get_smtp_settings(mask_password=False)
     host = cfg.get("smtp_host") or ""
@@ -37,6 +37,8 @@ def send_email(subject: str, body: str, settings: dict | None = None) -> dict:
     message["From"] = formataddr((from_name, from_addr))
     message["To"] = ", ".join(to_list)
     message.set_content(body)
+    if html:
+        message.add_alternative(html, subtype="html")
 
     port = int(cfg.get("smtp_port") or 587)
     security = str(cfg.get("smtp_security") or "starttls").lower()

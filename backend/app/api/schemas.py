@@ -54,6 +54,7 @@ class ApplicationSettings(BaseModel):
     log_retention_days: int | None = Field(default=None, ge=0)
     retention_check_interval_min: int | None = Field(default=None, ge=5)
     display_timezone: str | None = None
+    public_url: str | None = None
 
 
 class DetectionSettings(BaseModel):
@@ -94,6 +95,8 @@ class BlockingSettings(BaseModel):
     blocking_mode: str | None = None
     blocking_whitelist: str | None = None
     blocking_ttl_hours: int | None = Field(default=None, ge=0)
+    blocking_notify_email: bool | None = None
+    blocking_token_days: int | None = Field(default=None, ge=1)
 
 
 class BlockRequest(BaseModel):

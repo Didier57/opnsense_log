@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     blocking_whitelist: str = ""
     # Remove blocked IPs from the alias after this many hours (0 = keep forever).
     blocking_ttl_hours: int = 0
+    # E-mail the configured recipient(s) when an IP is blocked, with a one-click
+    # "Unblock" link (signed token, no login required).
+    blocking_notify_email: bool = True
+    # Validity of the e-mail unblock link token (days).
+    blocking_token_days: int = 7
 
     # --- Auth ---
     auth_enabled: bool = True

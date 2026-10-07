@@ -14,12 +14,14 @@ interface AppForm {
   log_retention_days: number;
   retention_check_interval_min: number;
   display_timezone: string;
+  public_url: string;
 }
 
 const DEFAULT_FORM: AppForm = {
   log_retention_days: 30,
   retention_check_interval_min: 60,
   display_timezone: "",
+  public_url: "",
 };
 
 export function Settings() {
@@ -40,6 +42,7 @@ export function Settings() {
           log_retention_days: Number(data.log_retention_days ?? 30),
           retention_check_interval_min: Number(data.retention_check_interval_min ?? 60),
           display_timezone: String(data.display_timezone ?? ""),
+          public_url: String(data.public_url ?? ""),
         };
         setForm(next);
         setCustom(!RETENTION_PRESETS.some((p) => p.value === next.log_retention_days));
@@ -141,6 +144,25 @@ export function Settings() {
             placeholder="Europe/Luxembourg"
             style={{ width: 280 }}
             onChange={(e) => setForm({ ...form, display_timezone: e.target.value })}
+          />
+        </label>
+      </div>
+
+      <div className="panel">
+        <h3 style={{ marginTop: 0 }}>URL publique</h3>
+        <p className="muted" style={{ fontSize: 12 }}>
+          Adresse à laquelle l'application est accessible depuis l'extérieur. Elle sert notamment à construire les
+          liens de déblocage envoyés par e-mail. Indiquez-la <strong>sans « / » à la fin</strong>
+          (ex. <span className="mono">https://logs.example.com:8443</span>). Un « / » final est ignoré.
+        </p>
+        <label className="muted" style={{ fontSize: 12 }}>
+          URL publique de l'application
+          <br />
+          <input
+            value={form.public_url}
+            placeholder="https://logs.example.com:8443"
+            style={{ width: 360 }}
+            onChange={(e) => setForm({ ...form, public_url: e.target.value })}
           />
         </label>
       </div>
