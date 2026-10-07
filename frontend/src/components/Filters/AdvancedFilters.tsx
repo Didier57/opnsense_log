@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useInterfaces } from "../../hooks/useInterfaces";
+import { useRules } from "../../hooks/useRules";
 import type { SearchClause } from "../../types";
 
 export const FILTER_FIELD_OPTIONS = [
@@ -27,7 +28,7 @@ export const FILTER_FIELD_LABELS: Record<string, string> = {
   dst_ip: "IP destination",
   src_port: "Port source",
   dst_port: "Port destination",
-  rule_id: "ID de règle",
+  rule_id: "Règle",
   hostname: "Hôte",
   ip_version: "Version IP",
   tcp_flags: "Drapeaux TCP",
@@ -91,6 +92,12 @@ export function AdvancedFilters({ clauses, logic, onLogicChange, onChange }: Pro
   const [selected, setSelected] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
   const interfaces = useInterfaces();
+  const rules = useRules();
+
+  const ruleLabels: Record<string, string> = {};
+  rules.forEach((rule) => {
+    ruleLabels[rule.rule_id] = rule.description || rule.rule_id;
+  });
 
   const isEnum = ENUM_FIELDS.includes(field);
 
@@ -118,6 +125,7 @@ export function AdvancedFilters({ clauses, logic, onLogicChange, onChange }: Pro
   };
 
   const add = () => {
+    if (field === "rule_id" && !value) return;
     if (isEnum) {
       if (selected.length === 0) return;
       onChange([...clauses, { field, op: "in", value: selected }]);
@@ -204,6 +212,15 @@ export function AdvancedFilters({ clauses, logic, onLogicChange, onChange }: Pro
               </div>
             )}
           </div>
+        ) : field === "rule_id" ? (
+          <select value={value} onChange={(e) => setValue(e.target.value)}>
+            <option value="">— règle —</option>
+            {rules.map((rule) => (
+              <option key={rule.rule_id} value={rule.rule_id}>
+                {rule.description || rule.rule_id}
+              </option>
+            ))}
+          </select>
         ) : (
           <input
             placeholder="valeur"
@@ -220,7 +237,9 @@ export function AdvancedFilters({ clauses, logic, onLogicChange, onChange }: Pro
             <span key={index} className="chip active">
               {FILTER_FIELD_LABELS[clause.field] ?? clause.field}{" "}
               {clause.op === "in" ? "parmi" : FILTER_OP_LABELS[clause.op] ?? clause.op}{" "}
-              {chipValue(clause.value)}{" "}
+              {clause.field === "rule_id" && !Array.isArray(clause.value)
+                ? ruleLabels[String(clause.value)] ?? String(clause.value)
+                : chipValue(clause.value)}{" "}
               <span style={{ cursor: "pointer" }} onClick={() => remove(index)}>
                 ✕
               </span>
