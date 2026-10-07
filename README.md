@@ -1,107 +1,123 @@
 # OPNsense Log Analyzer
 
-A self-hosted, Dockerized web application to **continuously collect, store, visualize and
-analyze OPNsense firewall `filterlog` logs** in real time.
+Une application web auto-hébergée et Dockerisée pour **collecter, stocker, visualiser et
+analyser en continu les journaux `filterlog` du pare-feu OPNsense** en temps réel.
 
-It is inspired by [Shayano/opnsense-log-viewer](https://github.com/Shayano/opnsense-log-viewer)
-but designed for permanent operation: continuous syslog collection, persistent storage,
-historical search, a Live View and optional OPNsense configuration synchronisation over SSH.
+Elle s'inspire de [Shayano/opnsense-log-viewer](https://github.com/Shayano/opnsense-log-viewer)
+mais est conçue pour un fonctionnement permanent : collecte syslog continue, stockage
+persistant, recherche historique, vue Temps réel et synchronisation optionnelle de la
+configuration OPNsense via SSH.
 
-> **Fundamental principle:** this app never depends on the OPNsense web UI. OPNsense is only
-> used as a *log source* and *configuration source*. The app has its own parser, database,
-> API, frontend, cache and configuration, and keeps analyzing logs even when OPNsense SSH is
-> temporarily unavailable.
+> **Principe fondamental :** cette application ne dépend jamais de l'interface web OPNsense.
+> OPNsense n'est utilisé que comme *source de journaux* et *source de configuration*.
+> L'application possède son propre analyseur, sa base de données, son API, son frontend, son
+> cache et sa configuration, et continue d'analyser les journaux même lorsque le SSH OPNsense
+> est temporairement indisponible.
 
-## Features
+## Fonctionnalités
 
-- **Continuous syslog reception** over UDP and/or TCP (`SYSLOG_PROTOCOL=udp|tcp|both`).
-- **Modular parser** producing structured events from OPNsense `filterlog` lines:
-  RFC3164, RFC5424, custom ISO-timestamp and raw `filterlog` formats.
-  Handles IPv4/IPv6, TCP/UDP, ICMP/ICMPv6 and malformed lines.
-- **Real-time Live View** over WebSocket with start/pause/resume/clear, configurable buffer
-  size and quick filters. Pausing the view **never** stops server-side reception.
-- **Historical search** performed server-side (DuckDB) — millions of rows are never loaded
-  into the browser. Date/time range, quick filters and advanced filters (AND/OR, operators,
-  regex).
-- **Dashboard & analysis**: cards (events/blocked/passed/interfaces), time series,
-  PASS vs BLOCK, traffic per interface, top source/destination IPs, top ports, top rules,
-  top protocols, and a per-dimension analysis section.
-- **Interface & rule mapping** fetched from OPNsense over SSH, showing e.g. `LAN (vtnet0)`
-  instead of the raw device, with **rule change history** stored over time.
-- **Export** of search results to CSV, JSON and Parquet.
-- **Retention policy** (`LOG_RETENTION_DAYS`, `0` = unlimited) with a background cleanup task.
-- **Saved filters**, pagination, event details.
-- **Monitoring & internal logging** with a System → Status page
-  (received / parsed / invalid / events-per-second) and a System → Logs page.
-- **Security detection & alerts**: a background engine (independent of the UI) detecting
-  port scans, brute force and (opt-in) traffic spikes. Alerts are listed under
-  **Security → Alerts** and can be sent by e-mail (SMTP). Settings are managed from the
-  web UI (Security → Detection, Settings → Notifications).
-- **Hostname lookup**: reverse DNS plus local names from the firewall's DHCP leases
-  (ISC / Kea / Dnsmasq) fetched over SSH.
-- **Authentication** (local, hashed with Argon2) with JWT tokens.
-- **Dockerized** single image serving both the API and the frontend, with a healthcheck.
+- **Réception syslog continue** en UDP et/ou TCP (`SYSLOG_PROTOCOL=udp|tcp|both`).
+- **Analyseur modulaire** produisant des événements structurés à partir des lignes
+  `filterlog` d'OPNsense : formats RFC3164, RFC5424, horodatage ISO personnalisé et
+  `filterlog` brut. Gère IPv4/IPv6, TCP/UDP, ICMP/ICMPv6 et les lignes malformées.
+- **Vue Temps réel** via WebSocket avec démarrer/pause/reprendre/vider, taille de tampon
+  configurable et filtres rapides. Mettre en pause la vue **n'arrête jamais** la réception
+  côté serveur.
+- **Recherche historique** exécutée côté serveur (DuckDB) — des millions de lignes ne sont
+  jamais chargées dans le navigateur. Plage date/heure, filtres rapides et filtres avancés
+  (ET/OU, opérateurs, regex).
+- **Tableau de bord et analyse** : cartes (événements/bloqués/autorisés/interfaces), séries
+  temporelles, AUTORISÉ vs BLOQUÉ, trafic par interface, principales IP source/destination,
+  principaux ports, principales règles, principaux protocoles, et une section d'analyse par
+  dimension.
+- **Correspondance interfaces et règles** récupérée depuis OPNsense via SSH, affichant par
+  ex. `LAN (vtnet0)` au lieu du périphérique brut, avec **historique des changements de
+  règles** conservé dans le temps.
+- **Export** des résultats de recherche en CSV, JSON et Parquet.
+- **Politique de rétention** (`LOG_RETENTION_DAYS`, `0` = illimitée) avec une tâche de
+  nettoyage en arrière-plan.
+- **Filtres enregistrés**, pagination, détails d'événement.
+- **Surveillance et journalisation interne** avec une page Système → État
+  (reçus / analysés / invalides / événements par seconde) et une page Système → Journaux.
+- **Détection de sécurité et alertes** : un moteur en arrière-plan (indépendant de
+  l'interface) détectant les scans de ports, les attaques par force brute et (en option) les
+  pics de trafic. Les alertes sont listées dans **Sécurité → Alertes** et peuvent être
+  envoyées par e-mail (SMTP). Les réglages se font depuis l'interface web
+  (Sécurité → Détection, Paramètres → Notifications).
+- **Blocage automatique** : ajout des IP publiques des alertes (force brute / scan de ports)
+  dans un **alias pare-feu OPNsense de type « Host(s) »** via l'API REST, en mode manuel ou
+  automatique, avec liste blanche et expiration (TTL).
+- **Géolocalisation (pays)** : pays d'origine des IP publiques (base gratuite DB-IP Lite, ou
+  MaxMind GeoLite2 si une clé est fournie), avec drapeaux et statistiques par pays.
+- **Recherche de noms d'hôtes** : DNS inverse plus les noms locaux issus des baux DHCP du
+  pare-feu (ISC / Kea / Dnsmasq) récupérés via SSH.
+- **Import des journaux OPNsense** : lecture des fichiers de journaux du pare-feu par SSH
+  pour combler les événements manquants (au démarrage et via un bouton), y compris les trous
+  au milieu d'une journée.
+- **Authentification** (locale, hachée avec Argon2) avec jetons JWT.
+- **Dockerisée** : une seule image servant à la fois l'API et le frontend, avec un
+  healthcheck.
 
 ## Architecture
 
-Loss-resistant ingestion pipeline:
+Pipeline d'ingestion résistant aux pertes :
 
 ```
-OPNsense ── syslog ──▶ Syslog receiver ──▶ Receive Queue ──▶ Parser workers ──▶ Batch insert ──▶ DuckDB
-                              │                                    │
-                              └──────────────▶ WebSocket Live ◀────┘
+OPNsense ── syslog ──▶ Récepteur syslog ──▶ File de réception ──▶ Workers d'analyse ──▶ Insertion par lots ──▶ DuckDB
+                            │                                          │
+                            └──────────────▶ WebSocket Temps réel ◀────┘
 ```
 
 ```
 backend/
   app/
-    api/         FastAPI routers (health, auth, logs, search, statistics, filters,
+    api/         routeurs FastAPI (health, auth, logs, search, statistics, filters,
                  rules, interfaces, settings, system, export, live)
-    parser/      filterlog / RFC3164 / RFC5424 / custom parsers
-    storage/     DuckDB database, repository, retention
-    syslog/      UDP/TCP syslog server with queue + batch workers
-    opnsense/    SSH client, config.xml loader, DHCP leases, sync, settings store
-    detection/   port-scan / brute-force / spike detectors, alerts store
-    notifications/ SMTP e-mail notifications
-    websocket/   Live hub
-    core/        logging, counters, security
-    main.py      FastAPI app + lifespan
-  tests/         parser / search / ssh tests
+    parser/      analyseurs filterlog / RFC3164 / RFC5424 / personnalisé
+    storage/     base DuckDB, dépôt, rétention
+    syslog/      serveur syslog UDP/TCP avec file + workers par lots
+    opnsense/    client SSH, chargeur config.xml, baux DHCP, synchronisation, stockage des réglages
+    detection/   détecteurs scan de ports / force brute / pics, stockage des alertes
+    notifications/ notifications e-mail SMTP
+    websocket/   concentrateur Temps réel
+    core/        journalisation, compteurs, sécurité
+    main.py      application FastAPI + cycle de vie
+  tests/         tests analyseur / recherche / ssh
   scripts/       hash_password.py
 frontend/
-  src/           React + Vite + TypeScript UI
-Dockerfile       multi-stage build (frontend + backend in one image)
+  src/           interface React + Vite + TypeScript
+Dockerfile       build multi-étapes (frontend + backend dans une seule image)
 docker-compose.yml
 ```
 
-Storage uses **DuckDB** (columnar, analytics-friendly, single-file, no server).
+Le stockage utilise **DuckDB** (colonnes, adapté à l'analytique, mono-fichier, sans serveur).
 
-## Quick start
+## Démarrage rapide
 
-1. Copy the environment file (default login is `admin` / `admin`):
+1. Copiez le fichier d'environnement (identifiants par défaut `admin` / `admin`) :
 
    ```bash
    cp .env.example .env
    docker compose up -d
    ```
 
-   Set `AUTH_USERNAME` / `AUTH_PASSWORD` in `.env` (or `docker-compose.yml`) to change the
-   login. No hashing step is required. For a hash-based password instead, set
-   `AUTH_PASSWORD_HASH` (generate it with
-   `docker compose run --rm opnsense-log-analyzer python scripts/hash_password.py`); it takes
-   precedence over `AUTH_PASSWORD` when set.
+   Définissez `AUTH_USERNAME` / `AUTH_PASSWORD` dans `.env` (ou `docker-compose.yml`) pour
+   changer l'identifiant. Aucune étape de hachage n'est nécessaire. Pour un mot de passe
+   haché, définissez plutôt `AUTH_PASSWORD_HASH` (générez-le avec
+   `docker compose run --rm opnsense-log-analyzer python scripts/hash_password.py`) ; il est
+   prioritaire sur `AUTH_PASSWORD` lorsqu'il est défini.
 
-2. Open the web UI at <http://SERVER_IP:8080> and log in.
+2. Ouvrez l'interface web sur <http://SERVER_IP:8080> et connectez-vous.
 
-3. Configure OPNsense to send logs to this host:
+3. Configurez OPNsense pour envoyer les journaux vers cet hôte :
 
-   **System → Settings → Logging → Remote destinations**
-   add a destination `SERVER_IP:5140` (UDP by default), then apply.
+   **Système → Paramètres → Journalisation → Destinations distantes**
+   ajoutez une destination `SERVER_IP:5140` (UDP par défaut), puis appliquez.
 
-Data is stored in the named Docker volume `opnsense_logs` and therefore **persists across
-`docker compose down` / `up`**.
+Les données sont stockées dans le volume Docker nommé `opnsense_logs` et **persistent donc
+entre `docker compose down` / `up`**.
 
-### Updating
+### Mise à jour
 
 ```bash
 docker compose pull && docker compose up -d
@@ -109,37 +125,38 @@ docker compose pull && docker compose up -d
 
 ## Configuration
 
-All configuration is provided through environment variables (see `.env.example`):
+Toute la configuration se fait via des variables d'environnement (voir `.env.example`) :
 
-| Variable | Default | Description |
+| Variable | Défaut | Description |
 | --- | --- | --- |
-| `WEB_PORT` | `8080` | HTTP port of the web UI / API |
-| `SYSLOG_PORT` | `5140` | syslog listening port |
-| `SYSLOG_PROTOCOL` | `udp` | `udp`, `tcp` or `both` |
-| `DATA_DIR` | `/data` | data directory (mount a volume here) |
-| `LOG_RETENTION_DAYS` | `30` | retention in days (`0` = unlimited) |
-| `AUTH_ENABLED` | `true` | enable local authentication |
-| `AUTH_USERNAME` | `admin` | login username |
-| `AUTH_PASSWORD` | `admin` | login password (plain text, simplest setup) |
-| `AUTH_PASSWORD_HASH` | – | Argon2 hash; takes precedence over `AUTH_PASSWORD` |
-| `SECRET_KEY` | – | JWT signing secret |
-| `DISPLAY_TIMEZONE` | `Europe/Luxembourg` | timezone used for display |
-| `SYSLOG_TIMEZONE` | `DISPLAY_TIMEZONE` | timezone in which OPNsense emits syslog timestamps |
+| `WEB_PORT` | `8080` | port HTTP de l'interface web / de l'API |
+| `SYSLOG_PORT` | `5140` | port d'écoute syslog |
+| `SYSLOG_PROTOCOL` | `udp` | `udp`, `tcp` ou `both` |
+| `DATA_DIR` | `/data` | répertoire de données (monter un volume ici) |
+| `LOG_RETENTION_DAYS` | `30` | rétention en jours (`0` = illimitée) |
+| `AUTH_ENABLED` | `true` | activer l'authentification locale |
+| `AUTH_USERNAME` | `admin` | nom d'utilisateur |
+| `AUTH_PASSWORD` | `admin` | mot de passe (en clair, configuration la plus simple) |
+| `AUTH_PASSWORD_HASH` | – | hachage Argon2 ; prioritaire sur `AUTH_PASSWORD` |
+| `SECRET_KEY` | – | secret de signature JWT |
+| `DISPLAY_TIMEZONE` | `Europe/Luxembourg` | fuseau horaire utilisé pour l'affichage |
+| `SYSLOG_TIMEZONE` | `DISPLAY_TIMEZONE` | fuseau dans lequel OPNsense émet les horodatages syslog |
 | `LOG_LEVEL` | `INFO` | `INFO`/`WARNING`/`ERROR`/`DEBUG` |
 
-The OPNsense SSH connection (host, port, username, auth type, password/key path, sync
-enabled and interval) is configured **from the web UI** under **Settings → OPNsense**. The
-values are stored server-side in the data volume and override any defaults, so no
-environment variables are needed. (Advanced/headless deployments may still set the
-`OPNSENSE_*` environment variables as fallback defaults.)
+La connexion SSH à OPNsense (hôte, port, nom d'utilisateur, type d'authentification,
+mot de passe/chemin de clé, synchronisation activée et intervalle) se configure **depuis
+l'interface web** sous **Paramètres → OPNsense**. Les valeurs sont stockées côté serveur
+dans le volume de données et remplacent les valeurs par défaut, aucune variable
+d'environnement n'est donc nécessaire. (Les déploiements avancés/sans interface peuvent
+toujours définir les variables `OPNSENSE_*` comme valeurs de repli.)
 
-> Timestamps are stored in **UTC**. OPNsense syslog lines carry no timezone offset, so
-> they are interpreted in `SYSLOG_TIMEZONE` (defaults to `DISPLAY_TIMEZONE`) and converted
-> to UTC, then displayed in the viewer's local timezone.
+> Les horodatages sont stockés en **UTC**. Les lignes syslog d'OPNsense ne portent aucun
+> décalage de fuseau : elles sont donc interprétées dans `SYSLOG_TIMEZONE` (par défaut
+> `DISPLAY_TIMEZONE`), converties en UTC, puis affichées dans le fuseau local du lecteur.
 
-## Development
+## Développement
 
-Backend:
+Backend :
 
 ```bash
 cd backend
@@ -149,12 +166,12 @@ pytest
 uvicorn app.main:app --reload --port 8080
 ```
 
-Frontend:
+Frontend :
 
 ```bash
 cd frontend
 npm install
-npm run dev        # http://localhost:5173, proxies /api to :8080
+npm run dev        # http://localhost:5173, proxy /api vers :8080
 ```
 
 ## Tests
@@ -163,35 +180,38 @@ npm run dev        # http://localhost:5173, proxies /api to :8080
 cd backend && pytest
 ```
 
-Covers the filterlog parser (the exact OPNsense example line, IPv4 TCP/UDP, IPv6, ICMP,
-missing fields, invalid lines), RFC3164/RFC5424 parsing, repository search
-(AND/OR/regex/time range/IP/port/rule/interface) and the SSH client
-(valid, bad password, invalid key, unreachable).
+Couvre l'analyseur filterlog (la ligne d'exemple exacte d'OPNsense, IPv4 TCP/UDP, IPv6,
+ICMP, champs manquants, lignes invalides), l'analyse RFC3164/RFC5424, la recherche dans le
+dépôt (ET/OU/regex/plage de temps/IP/port/règle/interface) et le client SSH
+(valide, mauvais mot de passe, clé invalide, injoignable).
 
-## Security
+## Sécurité
 
-- Hashed passwords (Argon2), JWT sessions.
-- Parameterized/whitelisted SQL filters (SQL-injection protection).
-- Strict validation of filter fields and operators.
-- SSH keys are never written to logs.
-- Costly requests are limited and large exports are streamed.
+- Mots de passe hachés (Argon2), sessions JWT.
+- Filtres SQL paramétrés/listés en liste blanche (protection contre l'injection SQL).
+- Validation stricte des champs et opérateurs de filtre.
+- Les clés SSH ne sont jamais écrites dans les journaux.
+- Les requêtes coûteuses sont limitées et les gros exports sont diffusés en flux.
 
-## Roadmap
+## Feuille de route
 
-Already implemented beyond V1:
+Déjà implémenté au-delà de la V1 :
 
-- **Detection engine** — port scans, brute force and (opt-in) traffic spikes, with an alert
-  list and e-mail (SMTP) notifications.
-- **Hostname lookup** — reverse DNS and DHCP/Dnsmasq lease names.
-- **Rule change history**.
+- **Moteur de détection** — scans de ports, force brute et (en option) pics de trafic, avec
+  une liste d'alertes et des notifications e-mail (SMTP).
+- **Blocage automatique** — alimentation d'un alias pare-feu OPNsense via l'API REST.
+- **Géolocalisation (pays)** — pays des IP publiques avec drapeaux et statistiques.
+- **Recherche de noms d'hôtes** — DNS inverse et noms des baux DHCP/Dnsmasq.
+- **Import des journaux OPNsense** — rattrapage des événements manquants par SSH.
+- **Historique des changements de règles**.
 
-Still planned:
+Encore prévu :
 
-- **V2** — advanced statistics, aliases, geolocation, Excel export, webhooks, full documented
-  API, multi-OPNsense, multi-user, LDAP/OIDC.
-- **V3** — richer detection: anomaly detection, IP / threat-intelligence alerts and event
-  correlation.
+- **V2** — statistiques avancées, alias, export Excel, webhooks, API complète documentée,
+  multi-OPNsense, multi-utilisateur, LDAP/OIDC.
+- **V3** — détection enrichie : détection d'anomalies, alertes IP / renseignement sur les
+  menaces et corrélation d'événements.
 
-## License
+## Licence
 
 MIT
