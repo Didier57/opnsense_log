@@ -22,6 +22,7 @@ _KEYS = [
     "opnsense_import_on_start",
     "opnsense_api_key",
     "opnsense_api_secret",
+    "opnsense_api_scheme",
     "opnsense_api_port",
 ]
 
@@ -56,6 +57,7 @@ def get_opnsense_settings(mask_password: bool = True) -> dict:
         "has_password": bool(value("opnsense_password")),
         "has_api_key": bool(value("opnsense_api_key")),
         "has_api_secret": bool(value("opnsense_api_secret")),
+        "opnsense_api_scheme": (str(value("opnsense_api_scheme") or "https").lower() or "https"),
         "opnsense_api_port": int(value("opnsense_api_port") or 443),
     }
     if not mask_password:

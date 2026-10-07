@@ -34,11 +34,13 @@ class OPNsenseAPI:
         port: int = 443,
         key: str = "",
         secret: str = "",
+        scheme: str = "https",
         timeout: int = 15,
         verify: bool = False,
     ) -> None:
         self.host = host
-        self.port = port or 443
+        self.scheme = "http" if str(scheme).lower() == "http" else "https"
+        self.port = port or (443 if self.scheme == "https" else 80)
         self.key = key
         self.secret = secret
         self.timeout = timeout
@@ -46,7 +48,7 @@ class OPNsenseAPI:
 
     @property
     def base_url(self) -> str:
-        return f"https://{self.host}:{self.port}/api"
+        return f"{self.scheme}://{self.host}:{self.port}/api"
 
     def is_configured(self) -> bool:
         return bool(self.host and self.key and self.secret)

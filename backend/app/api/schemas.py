@@ -46,6 +46,7 @@ class OPNsenseSettings(BaseModel):
     opnsense_import_on_start: bool | None = None
     opnsense_api_key: str | None = None
     opnsense_api_secret: str | None = None
+    opnsense_api_scheme: str | None = None
     opnsense_api_port: int | None = None
 
 

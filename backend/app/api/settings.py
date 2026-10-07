@@ -6,8 +6,9 @@ from fastapi import APIRouter, Depends
 from ..config import settings
 from ..opnsense.api_client import OPNsenseAPI
 from ..opnsense.api_keygen import generate_api_key
+from ..opnsense.config_loader import parse_webgui
 from ..opnsense.settings_store import get_opnsense_settings, update_opnsense_settings
-from ..opnsense.ssh import OPNsenseSSH
+from ..opnsense.ssh import OPNsenseSSH, SSHError
 from ..settings_store import get_app_settings, update_app_settings
 from .deps import require_user
 from .schemas import ApplicationSettings, OPNsenseSettings
@@ -90,6 +91,36 @@ def generate_opnsense_api_key(user: str = Depends(require_user)) -> dict:
     return {"ok": True, "message": "Clé API générée et enregistrée"}
 
 
+@router.post("/opnsense/detect-api")
+def detect_opnsense_api(user: str = Depends(require_user)) -> dict:
+    """Detect the web GUI protocol/port over SSH (the API shares that endpoint)."""
+    cfg = get_opnsense_settings(mask_password=False)
+    if not cfg.get("opnsense_host"):
+        return {"ok": False, "message": "OPNsense host not configured"}
+    try:
+        client = OPNsenseSSH(
+            host=cfg["opnsense_host"],
+            port=cfg["opnsense_ssh_port"],
+            username=cfg["opnsense_username"],
+            auth_type=cfg["opnsense_auth_type"],
+            password=cfg.get("opnsense_password"),
+            key_path=cfg["opnsense_key_path"],
+        )
+        contents = client.run("cat /conf/config.xml")
+    except SSHError as exc:
+        return {"ok": False, "message": str(exc)}
+    webgui = parse_webgui(contents)
+    update_opnsense_settings(
+        {"opnsense_api_scheme": webgui["protocol"], "opnsense_api_port": webgui["port"]}
+    )
+    return {
+        "ok": True,
+        "message": f"Détecté : {webgui['protocol']} port {webgui['port']}",
+        "protocol": webgui["protocol"],
+        "port": webgui["port"],
+    }
+
+
 @router.post("/opnsense/api-test")
 def test_opnsense_api(user: str = Depends(require_user)) -> dict:
     cfg = get_opnsense_settings(mask_password=False)
@@ -98,6 +129,7 @@ def test_opnsense_api(user: str = Depends(require_user)) -> dict:
     api = OPNsenseAPI(
         host=cfg["opnsense_host"],
         port=int(cfg.get("opnsense_api_port", 443) or 443),
+        scheme=cfg.get("opnsense_api_scheme", "https") or "https",
         key=cfg.get("opnsense_api_key", ""),
         secret=cfg.get("opnsense_api_secret", ""),
     )

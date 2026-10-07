@@ -8,7 +8,12 @@ from datetime import datetime, timezone
 
 from ..geoip.store import get_geo_settings, set_geo_credentials
 from ..storage.database import Database, get_database
-from .config_loader import parse_config, parse_geoip_credentials, parse_rules_debug
+from .config_loader import (
+    parse_config,
+    parse_geoip_credentials,
+    parse_rules_debug,
+    parse_webgui,
+)
 from .dhcp import (
     discover_script as dhcp_discover_script,
     fetch_script as dhcp_fetch_script,
@@ -16,7 +21,7 @@ from .dhcp import (
     parse_discovered_paths,
     static_lease_paths,
 )
-from .settings_store import get_opnsense_settings
+from .settings_store import get_opnsense_settings, update_opnsense_settings
 from .ssh import OPNsenseSSH, SSHError
 
 logger = logging.getLogger("opnsense.sync")
@@ -110,6 +115,24 @@ class OPNSenseSync:
                 logger.info("MaxMind credentials detected in the OPNsense GeoIP settings")
         except Exception:  # noqa: BLE001
             logger.exception("Failed to detect GeoIP credentials")
+
+        # The REST API shares the web GUI endpoint: auto-detect its protocol/port
+        # so the automatic-blocking feature works even on non-standard setups.
+        try:
+            webgui = parse_webgui(contents)
+            update_opnsense_settings(
+                {
+                    "opnsense_api_scheme": webgui["protocol"],
+                    "opnsense_api_port": webgui["port"],
+                }
+            )
+            logger.info(
+                "OPNsense web GUI detected on %s://<host>:%s",
+                webgui["protocol"],
+                webgui["port"],
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to detect OPNsense web GUI settings")
 
         # Resolve automatic/system/NAT rules that only exist in the loaded
         # ruleset (never in config.xml): each rule line carries

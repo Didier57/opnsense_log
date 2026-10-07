@@ -9,6 +9,7 @@ from app.opnsense.config_loader import (
     calc_rule_hash,
     parse_config,
     parse_rules_debug,
+    parse_webgui,
     to_array,
 )
 
@@ -209,3 +210,12 @@ def test_parse_rules_debug_extracts_label_and_descr():
 def test_parse_rules_debug_normalises_dashed_uuid():
     rules = parse_rules_debug('pass on vtnet0 label "AABBCCDD-1122-3344-5566-77889900AABB" # X')
     assert rules[0]["rule_id"] == "aabbccdd11223344556677889900aabb"
+
+
+def test_parse_webgui_detects_protocol_and_port():
+    config = "<opnsense><system><webgui><protocol>http</protocol><port>8080</port></webgui></system></opnsense>"
+    assert parse_webgui(config) == {"protocol": "http", "port": 8080}
+
+
+def test_parse_webgui_defaults_when_missing():
+    assert parse_webgui("<opnsense><system></system></opnsense>") == {"protocol": "https", "port": 443}

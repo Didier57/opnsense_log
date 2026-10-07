@@ -178,6 +178,11 @@ export const api = {
     request<{ ok: boolean; message: string }>("/api/settings/opnsense/generate-api-key", {
       method: "POST",
     }),
+  detectOpnsenseApi: () =>
+    request<{ ok: boolean; message: string; protocol?: string; port?: number }>(
+      "/api/settings/opnsense/detect-api",
+      { method: "POST" },
+    ),
   testOpnsenseApi: () =>
     request<{ ok: boolean; message: string }>("/api/settings/opnsense/api-test", {
       method: "POST",

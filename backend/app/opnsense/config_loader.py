@@ -215,6 +215,30 @@ def parse_config(contents: str) -> tuple[list[dict], list[dict]]:
     return parse_interfaces(root), parse_rules(root)
 
 
+def parse_webgui(contents: str) -> dict:
+    """Return the OPNsense web GUI protocol/port from ``config.xml``.
+
+    The REST API is served on the same endpoint as the web GUI, so this is used
+    to auto-detect the API scheme/port. Returns ``{"protocol": ..., "port": ...}``
+    (defaults to https/443 when the section is missing).
+    """
+    try:
+        root = ET.fromstring(contents)
+    except ET.ParseError:
+        return {"protocol": "https", "port": 443}
+    node = root.find("system/webgui")
+    protocol = "https"
+    port = 443
+    if node is not None:
+        raw_protocol = (node.findtext("protocol") or "").strip().lower()
+        if raw_protocol in {"http", "https"}:
+            protocol = raw_protocol
+        raw_port = (node.findtext("port") or "").strip()
+        if raw_port.isdigit():
+            port = int(raw_port)
+    return {"protocol": protocol, "port": port}
+
+
 _GEOIP_URL_RE = re.compile(r"<geoip>\s*<url>([^<]*)</url>", re.S)
 _MAXMIND_USERINFO_RE = re.compile(r"^https?://([^:/@]+):([^@/]+)@download\.maxmind\.com/")
 _MAXMIND_LICENSE_RE = re.compile(r"(?:[?&]|&amp;)license_key=([^&<]+)")

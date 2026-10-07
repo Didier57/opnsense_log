@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     # generated over SSH from the web UI.
     opnsense_api_key: str = ""
     opnsense_api_secret: str = ""
+    opnsense_api_scheme: str = "https"
     opnsense_api_port: int = 443
 
     # --- Automatic blocking (push alert source IPs into an OPNsense alias) ---

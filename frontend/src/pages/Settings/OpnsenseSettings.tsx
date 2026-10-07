@@ -9,7 +9,8 @@ const FIELDS: { key: string; label: string; type?: string }[] = [
   { key: "opnsense_password", label: "Mot de passe (laisser vide pour conserver l'actuel)", type: "password" },
   { key: "opnsense_key_path", label: "Chemin de la clé privée" },
   { key: "opnsense_sync_interval_min", label: "Intervalle de synchronisation (min)", type: "number" },
-  { key: "opnsense_api_port", label: "Port API OPNsense (HTTPS, 443 par défaut)", type: "number" },
+  { key: "opnsense_api_scheme", label: "Protocole API OPNsense (https / http)" },
+  { key: "opnsense_api_port", label: "Port API OPNsense (celui de l'interface web)", type: "number" },
   { key: "opnsense_api_key", label: "Clé API OPNsense" },
   { key: "opnsense_api_secret", label: "Secret API OPNsense (laisser vide pour conserver l'actuel)", type: "password" },
 ];
@@ -102,6 +103,21 @@ export function OpnsenseSettings() {
     }
   };
 
+  const detectApi = async () => {
+    setError("");
+    setMessage("");
+    setBusy(true);
+    try {
+      const result = await api.detectOpnsenseApi();
+      setMessage(result.message || (result.ok ? "Détecté" : "Échec de la détection"));
+      if (result.ok) load();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const testApi = async () => {
     setError("");
     setMessage("");
@@ -123,6 +139,9 @@ export function OpnsenseSettings() {
         <div className="filters">
           <button onClick={test} disabled={busy}>
             Tester la connexion SSH
+          </button>
+          <button onClick={detectApi} disabled={busy}>
+            Détecter (SSH)
           </button>
           <button onClick={testApi} disabled={busy}>
             Tester l'API

@@ -24,6 +24,7 @@ def _api() -> OPNsenseAPI:
     return OPNsenseAPI(
         host=cfg.get("opnsense_host", ""),
         port=int(cfg.get("opnsense_api_port", 443) or 443),
+        scheme=cfg.get("opnsense_api_scheme", "https") or "https",
         key=cfg.get("opnsense_api_key", ""),
         secret=cfg.get("opnsense_api_secret", ""),
     )
