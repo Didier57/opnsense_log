@@ -42,7 +42,8 @@ export function FilterlogImportPanel() {
       </div>
       <p className="muted">
         Lit les fichiers de logs du pare-feu par SSH et importe uniquement les événements manquants
-        (les jours déjà présents sont ignorés). Utile après un arrêt de l'application.
+        des N derniers jours (réglable dans Paramètres → OPNsense ; 0 = illimité). Utile après un
+        arrêt de l'application.
       </p>
       {message && <p className="muted">{message}</p>}
       {status?.error && <p className="error">{status.error}</p>}

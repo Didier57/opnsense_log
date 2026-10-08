@@ -18,12 +18,14 @@ between the last heartbeat and syslog resumption, without importing events that
 syslog already stored.  Every day file is intersected with this window and only
 the matching records are imported, so a gap located in the middle of a day (or
 spanning several days) is filled too, without re-reading days that are already
-covered.  Days that are entirely absent from the database but still present in
-``/var/log/filter`` (e.g. gaps older than the last downtime, or days lost before
-this feature existed) are imported in full, so a missing day on disk is
-recovered automatically.  When the database is still empty nothing is imported
-automatically (a heavy full history backfill is left to the manual button).
-``full=True`` re-imports every line regardless of the window.
+covered.
+
+To keep the scan cheap (a large backfill pegs the CPU and freezes the live view)
+only the last ``max_days`` days are considered (0 = no limit).  Days already on
+disk but older than that and missing from the database are NOT recovered
+automatically; use ``full=True`` from the manual button for a complete backfill.
+When the database is still empty nothing is imported automatically.
+``full=True`` re-imports every day regardless of the window and the day limit.
 """
 from __future__ import annotations
 
@@ -42,7 +44,7 @@ from .ssh import OPNsenseSSH
 logger = logging.getLogger("opnsense.filterlog_import")
 
 LOG_DIR = "/var/log/filter"
-BATCH_SIZE = 5000
+BATCH_SIZE = 1000
 CHUNK_SIZE = 65536
 _DATE_RE = re.compile(r"filter_(\d{8})\.log$")
 _PRI_RE = re.compile(r"<\d{1,3}>")
@@ -147,15 +149,6 @@ def _list_log_files(ssh: OPNsenseSSH) -> list[str]:
 def _global_max_event_time(repo: EventRepository) -> datetime | None:
     row = repo.db.execute_read('SELECT MAX("event_time") FROM events').fetchone()
     return row[0] if row else None
-
-
-def _day_has_events(repo: EventRepository, start: datetime, end: datetime) -> bool:
-    """True when at least one stored event falls inside the day ``[start, end)``."""
-    row = repo.db.execute_read(
-        'SELECT 1 FROM events WHERE "event_time" >= ? AND "event_time" < ? LIMIT 1',
-        [start, end],
-    ).fetchone()
-    return row is not None
 
 
 def last_run() -> datetime | None:
@@ -285,15 +278,22 @@ def _import_file(
         import_job.inserted += len(batch)
 
 
-def run_import(full: bool = False, until: datetime | None = None) -> dict:
-    """Scan all OPNsense filter log files and import what is missing.
+def run_import(
+    full: bool = False,
+    until: datetime | None = None,
+    max_days: int | None = None,
+) -> dict:
+    """Scan the recent OPNsense filter log files and import what is missing.
 
-    ``full=True`` re-imports every line regardless of the stored watermark
+    ``full=True`` re-imports every day in full regardless of the stored watermark
     (may create duplicates); the default mode only fills the gaps.
 
     ``until`` caps the end of the gap window (used at startup, where it is the
     time of the first syslog event received since boot: everything before it is
     backfilled from the files while live syslog already covers what follows).
+
+    ``max_days`` limits the scan to the last N days (0 or ``None`` = no limit).
+    Ignored when ``full`` is set.
     """
     import_job.begin()
     try:
@@ -306,13 +306,16 @@ def run_import(full: bool = False, until: datetime | None = None) -> dict:
         # stored event (nothing newer has been persisted by syslog) and ends at
         # ``until`` (first event received after boot) or now. Each day file is
         # intersected with it, so gaps sitting in the middle of a day are filled
-        # too, while days already covered are never read. When the database is
-        # empty (fresh install) nothing is imported automatically so startup
-        # never triggers a heavy multi-day scan.
+        # too, while days already covered are never read. Only the last
+        # ``max_days`` days are considered so the scan stays cheap and never
+        # freezes the live view; older days are left to the manual full backfill.
         overall = None if full else _global_max_event_time(repo)
-        last_run = None if full else _get_last_run(repo)
+        last_run_recorded = None if full else _get_last_run(repo)
         now = datetime.now(timezone.utc)
         upper = until if (not full and until is not None) else now
+        cutoff = None
+        if not full and max_days and max_days > 0:
+            cutoff = now - timedelta(days=int(max_days))
         for path in files:
             import_job.current_file = path
             day = _file_day(path)
@@ -322,21 +325,15 @@ def run_import(full: bool = False, until: datetime | None = None) -> dict:
                 import_job.files_scanned += 1
                 continue
             start, end = _day_window(day)
-            if overall is None:
+            if overall is None or (cutoff is not None and end <= cutoff):
+                # Empty DB (fresh install) or day outside the scan limit.
                 import_job.files_skipped += 1
-                import_job.files_scanned += 1
-                continue
-            if not _day_has_events(repo, start, end):
-                # Day completely absent from the database but still on disk:
-                # import it in full (bounded to the day, start included).
-                _import_file(repo, ssh, path, windows=[(start - timedelta(seconds=1), end)])
-                import_job.files_imported += 1
                 import_job.files_scanned += 1
                 continue
             # Start at the newest stored event so already-persisted records are
             # never imported a second time; the heartbeat can only push it later
             # (when the app was up but no traffic was logged since).
-            lower = max(overall, last_run) if last_run else overall
+            lower = max(overall, last_run_recorded) if last_run_recorded else overall
             window_start = max(start, lower)
             window_end = min(end, upper)
             if window_start >= window_end:
@@ -366,14 +363,18 @@ def run_import(full: bool = False, until: datetime | None = None) -> dict:
     return import_job.snapshot()
 
 
-def start_import(full: bool = False, until: datetime | None = None) -> bool:
+def start_import(
+    full: bool = False,
+    until: datetime | None = None,
+    max_days: int | None = None,
+) -> bool:
     """Start the import in a background thread. Returns False if already running."""
     with import_job._lock:
         if import_job.running:
             return False
     thread = threading.Thread(
         target=run_import,
-        kwargs={"full": full, "until": until},
+        kwargs={"full": full, "until": until, "max_days": max_days},
         name="filterlog-import",
         daemon=True,
     )

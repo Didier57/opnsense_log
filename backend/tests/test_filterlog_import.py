@@ -186,7 +186,7 @@ def test_run_import_until_caps_window(database, monkeypatch):
     assert repo.count() == 2
 
 
-def test_run_import_recovers_missing_day(database, monkeypatch):
+def test_run_import_does_not_recover_old_missing_day(database, monkeypatch):
     day6 = "/var/log/filter/filter_20261006.log"
     day5 = "/var/log/filter/filter_20261005.log"
     repo = EventRepository()
@@ -198,8 +198,25 @@ def test_run_import_recovers_missing_day(database, monkeypatch):
     monkeypatch.setattr(fi, "_build_ssh", lambda: ssh)
     result = fi.run_import()
     assert result["error"] is None
-    assert result["inserted"] == 1  # the fully missing 5th is recovered
-    assert repo.count() == 2
+    # A day entirely missing but older than the downtime window is NOT recovered
+    # automatically (the scan is bounded so it never freezes the live view).
+    assert result["inserted"] == 0
+    assert repo.count() == 1
+
+
+def test_run_import_max_days_limits_scan(database, monkeypatch):
+    day6 = "/var/log/filter/filter_20261006.log"
+    repo = EventRepository()
+    seed = FakeSSH([], {f"cat {day6}": [LINE_07H]})
+    fi.import_job._reset_run()
+    fi._import_file(repo, seed, day6, None, None)
+    ssh = FakeSSH([day6], {f"cat {day6}": [LINE_10H]})
+    monkeypatch.setattr(fi, "_build_ssh", lambda: ssh)
+    # max_days=0 disables the limit (default), max_days=1 excludes the older day.
+    result = fi.run_import(max_days=1)
+    assert result["error"] is None
+    assert result["files_imported"] == 0
+    assert result["inserted"] == 0
 
 
 def test_start_import_rejects_concurrent():

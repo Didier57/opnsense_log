@@ -21,6 +21,7 @@ _KEYS = [
     "opnsense_sync_interval_min",
     "opnsense_import_on_start",
     "opnsense_import_wait_syslog_sec",
+    "opnsense_import_max_days",
     "opnsense_api_key",
     "opnsense_api_secret",
     "opnsense_api_scheme",
@@ -58,6 +59,7 @@ def get_opnsense_settings(mask_password: bool = True) -> dict:
         "opnsense_import_wait_syslog_sec": max(
             0, int(value("opnsense_import_wait_syslog_sec") or 120)
         ),
+        "opnsense_import_max_days": max(0, int(value("opnsense_import_max_days") or 7)),
         "has_password": bool(value("opnsense_password")),
         "has_api_key": bool(value("opnsense_api_key")),
         "has_api_secret": bool(value("opnsense_api_secret")),

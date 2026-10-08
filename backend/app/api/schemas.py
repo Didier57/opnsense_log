@@ -45,6 +45,7 @@ class OPNsenseSettings(BaseModel):
     opnsense_sync_interval_min: int | None = None
     opnsense_import_on_start: bool | None = None
     opnsense_import_wait_syslog_sec: int | None = Field(default=None, ge=0)
+    opnsense_import_max_days: int | None = Field(default=None, ge=0)
     opnsense_api_key: str | None = None
     opnsense_api_secret: str | None = None
     opnsense_api_scheme: str | None = None

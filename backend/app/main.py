@@ -96,7 +96,9 @@ async def _startup_filterlog_import() -> None:
             waited += 3
         if until is None:
             logger.info("No syslog received within %ds; importing files up to now", wait_sec)
-        await asyncio.to_thread(run_import, False, until)
+        await asyncio.to_thread(
+            run_import, False, until, int(cfg.get("opnsense_import_max_days") or 0)
+        )
         logger.info("Startup OPNsense filter log import finished")
     except Exception:  # noqa: BLE001
         logger.exception("Startup filter log import failed")
