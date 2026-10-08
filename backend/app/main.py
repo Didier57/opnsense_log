@@ -57,10 +57,11 @@ async def _startup_filterlog_import() -> None:
     """Fill the gap left while the container was down by importing OPNsense logs.
 
     OPNsense does not resume sending syslog immediately after a restart, so we
-    first wait (bounded by ``opnsense_import_wait_syslog_sec``) until live syslog
-    is received again, then backfill the files only up to that first event time.
-    This fills the blind window between the last heartbeat and syslog resumption
-    without importing events that syslog already stored.
+    first wait (bounded by ``opnsense_import_wait_syslog_sec``) until a *new*
+    event (newer than everything already stored) is received again, then backfill
+    the files only up to that first event time. This fills the blind window
+    between the newest stored event and syslog resumption without importing
+    events that syslog already stored.
     """
     try:
         cfg = get_opnsense_settings(mask_password=False)
@@ -72,14 +73,21 @@ async def _startup_filterlog_import() -> None:
         _startup_import_done.set()
         return
     try:
-        from .opnsense.filterlog_import import first_event_after, last_run, run_import
+        from .opnsense.filterlog_import import (
+            first_event_after,
+            global_max_event_time,
+            run_import,
+        )
 
-        lower = await asyncio.to_thread(last_run)
+        marker = await asyncio.to_thread(global_max_event_time)
+        if marker is None:
+            logger.info("No stored events yet; skipping startup OPNsense import")
+            return
         wait_sec = max(0, int(cfg.get("opnsense_import_wait_syslog_sec") or 120))
         until = None
         waited = 0
         while waited < wait_sec:
-            candidate = await asyncio.to_thread(first_event_after, lower)
+            candidate = await asyncio.to_thread(first_event_after, marker)
             if candidate is not None:
                 until = candidate
                 logger.info("Syslog reception resumed at %s; backfilling files", candidate)

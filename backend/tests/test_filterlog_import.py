@@ -117,20 +117,19 @@ def test_heartbeat_roundtrip(database):
     assert fi._get_last_run(EventRepository()) == when
 
 
-def test_run_import_fills_mid_day_gap_via_heartbeat(database, monkeypatch):
+def test_run_import_fills_gap_after_newest_event(database, monkeypatch):
     path = "/var/log/filter/filter_20261006.log"
     repo = EventRepository()
-    # Seed records at 07:00 and 10:00 so the newest stored event is 10:00.
-    seed = FakeSSH([], {f"cat {path}": [LINE_07H, LINE_10H]})
+    # Seed records at 07:00 and 08:00 so the newest stored event is 08:00.
+    seed = FakeSSH([], {f"cat {path}": [LINE_07H, LINE_08H]})
     fi.import_job._reset_run()
     fi._import_file(repo, seed, path, None, None)
     assert repo.count() == 2
-    # The heartbeat says the app was up until 07:30, so the 08:00 record is a
-    # mid-day gap that must be filled even though 10:00 is already stored.
-    fi.set_last_run(datetime(2026, 10, 6, 7, 30, tzinfo=timezone.utc))
-    ssh = FakeSSH([path], {f"cat {path}": [LINE_08H]})
+    # The file still contains the already-stored 07:00/08:00 plus a new 10:00;
+    # only the record newer than the newest stored event must be imported.
+    ssh = FakeSSH([path], {f"cat {path}": [LINE_07H, LINE_08H, LINE_10H]})
     monkeypatch.setattr(fi, "_build_ssh", lambda: ssh)
-    result = fi.run_import()
+    result = fi.run_import(until=datetime(2026, 10, 6, 10, 30, tzinfo=timezone.utc))
     assert result["error"] is None
     assert result["inserted"] == 1
     assert repo.count() == 3
@@ -168,11 +167,10 @@ def test_first_event_after(database):
 def test_run_import_until_caps_window(database, monkeypatch):
     path = "/var/log/filter/filter_20261006.log"
     repo = EventRepository()
-    # Seed 07:00 and 10:00 so the newest stored event (overall) is 10:00.
-    seed = FakeSSH([], {f"cat {path}": [LINE_07H, LINE_10H]})
+    # Seed 07:00 only so the newest stored event (overall) is 07:00.
+    seed = FakeSSH([], {f"cat {path}": [LINE_07H]})
     fi.import_job._reset_run()
     fi._import_file(repo, seed, path, None, None)
-    fi.set_last_run(datetime(2026, 10, 6, 7, 30, tzinfo=timezone.utc))
     ssh = FakeSSH([path], {f"cat {path}": [LINE_08H, LINE_10H]})
     monkeypatch.setattr(fi, "_build_ssh", lambda: ssh)
     # until=08:30 caps the window: only the 08:00 record is imported, the 10:00
@@ -181,7 +179,7 @@ def test_run_import_until_caps_window(database, monkeypatch):
     assert result["error"] is None
     assert result["inserted"] == 1
     assert result["skipped"] == 1
-    assert repo.count() == 3
+    assert repo.count() == 2
 
 
 def test_start_import_rejects_concurrent():

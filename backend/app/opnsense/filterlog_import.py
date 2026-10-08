@@ -151,6 +151,11 @@ def last_run() -> datetime | None:
     return _get_last_run(EventRepository())
 
 
+def global_max_event_time() -> datetime | None:
+    """Newest stored event time (end of what syslog has already persisted)."""
+    return _global_max_event_time(EventRepository())
+
+
 def first_event_after(after: datetime | None) -> datetime | None:
     """Earliest stored event newer than ``after`` (or the earliest overall).
 
@@ -248,7 +253,7 @@ def _import_file(
             continue
         when = event.event_time
         if windows is not None:
-            if not any(start <= when < end for start, end in windows):
+            if not any(start < when < end for start, end in windows):
                 import_job.skipped += 1
                 continue
         elif (after is not None and when <= after) or (before is not None and when >= before):
@@ -285,11 +290,13 @@ def run_import(full: bool = False, until: datetime | None = None) -> dict:
         files = _list_log_files(ssh)
         import_job.files_total = len(files)
         logger.info("Filter log import: %d file(s) found", len(files))
-        # In gap mode we only fill the downtime window (last heartbeat, now):
-        # each day file is intersected with it, so gaps sitting in the middle of
-        # a day are filled too, while days already covered are never read. When
-        # the database is empty (fresh install) nothing is imported automatically
-        # so startup never triggers a heavy multi-day scan.
+        # In gap mode we only fill the downtime window: it starts at the newest
+        # stored event (nothing newer has been persisted by syslog) and ends at
+        # ``until`` (first event received after boot) or now. Each day file is
+        # intersected with it, so gaps sitting in the middle of a day are filled
+        # too, while days already covered are never read. When the database is
+        # empty (fresh install) nothing is imported automatically so startup
+        # never triggers a heavy multi-day scan.
         overall = None if full else _global_max_event_time(repo)
         last_run = None if full else _get_last_run(repo)
         now = datetime.now(timezone.utc)
@@ -307,7 +314,10 @@ def run_import(full: bool = False, until: datetime | None = None) -> dict:
                 import_job.files_skipped += 1
                 import_job.files_scanned += 1
                 continue
-            lower = last_run or overall
+            # Start at the newest stored event so already-persisted records are
+            # never imported a second time; the heartbeat can only push it later
+            # (when the app was up but no traffic was logged since).
+            lower = max(overall, last_run) if last_run else overall
             window_start = max(start, lower)
             window_end = min(end, upper)
             if window_start >= window_end:
