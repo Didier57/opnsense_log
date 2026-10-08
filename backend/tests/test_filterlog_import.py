@@ -21,6 +21,10 @@ LINE_07H = (
     "<134>1 2026-10-06T07:00:00+00:00 host filterlog 1 - [meta sequenceId=\"0\"] "
     "7,,,abcd,vtnet0,match,pass,out,4,0x0,,64,1,0,DF,6,tcp,60,10.0.0.1,1.1.1.1,1,80,0,S,1,,64240,,"
 )
+LINE_05H = (
+    "<134>1 2026-10-05T12:00:00+00:00 host filterlog 1 - [meta sequenceId=\"9\"] "
+    "9,,,abcd,vtnet0,match,pass,out,4,0x0,,64,1,0,DF,6,tcp,60,10.0.0.1,2.2.2.2,2,80,0,S,1,,64240,,"
+)
 
 
 @pytest.fixture()
@@ -179,6 +183,22 @@ def test_run_import_until_caps_window(database, monkeypatch):
     assert result["error"] is None
     assert result["inserted"] == 1
     assert result["skipped"] == 1
+    assert repo.count() == 2
+
+
+def test_run_import_recovers_missing_day(database, monkeypatch):
+    day6 = "/var/log/filter/filter_20261006.log"
+    day5 = "/var/log/filter/filter_20261005.log"
+    repo = EventRepository()
+    # Only the 6th has stored data; the 5th is entirely missing from the DB.
+    seed = FakeSSH([], {f"cat {day6}": [LINE_07H]})
+    fi.import_job._reset_run()
+    fi._import_file(repo, seed, day6, None, None)
+    ssh = FakeSSH([day5, day6], {f"cat {day5}": [LINE_05H], f"cat {day6}": [LINE_07H]})
+    monkeypatch.setattr(fi, "_build_ssh", lambda: ssh)
+    result = fi.run_import()
+    assert result["error"] is None
+    assert result["inserted"] == 1  # the fully missing 5th is recovered
     assert repo.count() == 2
 
 

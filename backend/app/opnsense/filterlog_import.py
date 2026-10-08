@@ -18,9 +18,12 @@ between the last heartbeat and syslog resumption, without importing events that
 syslog already stored.  Every day file is intersected with this window and only
 the matching records are imported, so a gap located in the middle of a day (or
 spanning several days) is filled too, without re-reading days that are already
-covered.  When the database is still empty nothing is imported automatically (a
-heavy full history backfill is left to the manual button).  ``full=True``
-re-imports every line regardless of the window.
+covered.  Days that are entirely absent from the database but still present in
+``/var/log/filter`` (e.g. gaps older than the last downtime, or days lost before
+this feature existed) are imported in full, so a missing day on disk is
+recovered automatically.  When the database is still empty nothing is imported
+automatically (a heavy full history backfill is left to the manual button).
+``full=True`` re-imports every line regardless of the window.
 """
 from __future__ import annotations
 
@@ -144,6 +147,15 @@ def _list_log_files(ssh: OPNsenseSSH) -> list[str]:
 def _global_max_event_time(repo: EventRepository) -> datetime | None:
     row = repo.db.execute_read('SELECT MAX("event_time") FROM events').fetchone()
     return row[0] if row else None
+
+
+def _day_has_events(repo: EventRepository, start: datetime, end: datetime) -> bool:
+    """True when at least one stored event falls inside the day ``[start, end)``."""
+    row = repo.db.execute_read(
+        'SELECT 1 FROM events WHERE "event_time" >= ? AND "event_time" < ? LIMIT 1',
+        [start, end],
+    ).fetchone()
+    return row is not None
 
 
 def last_run() -> datetime | None:
@@ -312,6 +324,13 @@ def run_import(full: bool = False, until: datetime | None = None) -> dict:
             start, end = _day_window(day)
             if overall is None:
                 import_job.files_skipped += 1
+                import_job.files_scanned += 1
+                continue
+            if not _day_has_events(repo, start, end):
+                # Day completely absent from the database but still on disk:
+                # import it in full (bounded to the day, start included).
+                _import_file(repo, ssh, path, windows=[(start - timedelta(seconds=1), end)])
+                import_job.files_imported += 1
                 import_job.files_scanned += 1
                 continue
             # Start at the newest stored event so already-persisted records are
