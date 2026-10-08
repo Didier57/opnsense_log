@@ -22,6 +22,11 @@ from .syslog.server import syslog_server
 
 logger = logging.getLogger("opnsense.main")
 
+# Set once the startup gap import has finished (or been skipped). The heartbeat
+# loop waits for it so it cannot advance the watermark past the downtime window
+# before the import has read it.
+_startup_import_done = asyncio.Event()
+
 
 async def _opnsense_sync_loop() -> None:
     """Periodically sync OPNsense config.
@@ -49,32 +54,58 @@ async def _opnsense_sync_loop() -> None:
 
 
 async def _startup_filterlog_import() -> None:
-    """Fill the gap left while the container was down by importing OPNsense logs."""
-    await asyncio.sleep(5)
+    """Fill the gap left while the container was down by importing OPNsense logs.
+
+    OPNsense does not resume sending syslog immediately after a restart, so we
+    first wait (bounded by ``opnsense_import_wait_syslog_sec``) until live syslog
+    is received again, then backfill the files only up to that first event time.
+    This fills the blind window between the last heartbeat and syslog resumption
+    without importing events that syslog already stored.
+    """
     try:
         cfg = get_opnsense_settings(mask_password=False)
     except Exception:  # noqa: BLE001
         logger.exception("Could not read OPNsense settings for startup import")
+        _startup_import_done.set()
         return
     if not cfg.get("opnsense_host") or not cfg.get("opnsense_import_on_start", True):
+        _startup_import_done.set()
         return
     try:
-        from .opnsense.filterlog_import import start_import
+        from .opnsense.filterlog_import import first_event_after, last_run, run_import
 
-        if start_import():
-            logger.info("Startup OPNsense filter log import started")
+        lower = await asyncio.to_thread(last_run)
+        wait_sec = max(0, int(cfg.get("opnsense_import_wait_syslog_sec") or 120))
+        until = None
+        waited = 0
+        while waited < wait_sec:
+            candidate = await asyncio.to_thread(first_event_after, lower)
+            if candidate is not None:
+                until = candidate
+                logger.info("Syslog reception resumed at %s; backfilling files", candidate)
+                break
+            await asyncio.sleep(3)
+            waited += 3
+        if until is None:
+            logger.info("No syslog received within %ds; importing files up to now", wait_sec)
+        await asyncio.to_thread(run_import, False, until)
+        logger.info("Startup OPNsense filter log import finished")
     except Exception:  # noqa: BLE001
         logger.exception("Startup filter log import failed")
+    finally:
+        _startup_import_done.set()
 
 
 async def _filterlog_heartbeat_loop() -> None:
     """Persist a periodic heartbeat while the application runs.
 
     The heartbeat marks the last moment the app was known to be up, so the next
-    startup can compute the precise downtime window and only fill that gap.
+    startup can compute the precise downtime window and only fill that gap. It is
+    held back until the startup import has finished so it cannot erase the gap.
     """
     from .opnsense.filterlog_import import set_last_run
 
+    await _startup_import_done.wait()
     while True:
         try:
             await asyncio.to_thread(set_last_run)

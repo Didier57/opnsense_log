@@ -9,13 +9,18 @@ reliably newline separated (several records can be concatenated on one line),
 so the stream is split on the ``<PRI>`` marker instead of newlines.
 
 The importer fills the gap left while the container was down.  The gap is the
-downtime window ``(last_run, now)`` where ``last_run`` is a persistent heartbeat
-recorded while the application is running.  Every day file is intersected with
-this window and only the matching records are imported, so a gap located in the
-middle of a day (or spanning several days) is filled too, without re-reading
-days that are already covered.  When the database is still empty nothing is
-imported automatically (a heavy full history backfill is left to the manual
-button).  ``full=True`` re-imports every line regardless of the window.
+downtime window ``(last_run, upper)`` where ``last_run`` is a persistent
+heartbeat recorded while the application is running, and ``upper`` is normally
+"now".  At startup we instead wait (bounded by ``opnsense_import_wait_syslog_sec``)
+for live syslog reception to resume and use the timestamp of the first event
+received since boot as ``upper``: the files then fill exactly the blind window
+between the last heartbeat and syslog resumption, without importing events that
+syslog already stored.  Every day file is intersected with this window and only
+the matching records are imported, so a gap located in the middle of a day (or
+spanning several days) is filled too, without re-reading days that are already
+covered.  When the database is still empty nothing is imported automatically (a
+heavy full history backfill is left to the manual button).  ``full=True``
+re-imports every line regardless of the window.
 """
 from __future__ import annotations
 
@@ -141,6 +146,28 @@ def _global_max_event_time(repo: EventRepository) -> datetime | None:
     return row[0] if row else None
 
 
+def last_run() -> datetime | None:
+    """Last recorded heartbeat (when the app was known to be up)."""
+    return _get_last_run(EventRepository())
+
+
+def first_event_after(after: datetime | None) -> datetime | None:
+    """Earliest stored event newer than ``after`` (or the earliest overall).
+
+    Used at startup to detect when live syslog reception resumed: the returned
+    time is the boundary up to which the SSH import must fill the gap, so the
+    already-received events are never imported a second time.
+    """
+    repo = EventRepository()
+    if after is None:
+        row = repo.db.execute_read('SELECT MIN("event_time") FROM events').fetchone()
+    else:
+        row = repo.db.execute_read(
+            'SELECT MIN("event_time") FROM events WHERE "event_time" > ?', [after]
+        ).fetchone()
+    return row[0] if row else None
+
+
 _LAST_RUN_KEY = "import_last_run_at"
 
 
@@ -241,11 +268,15 @@ def _import_file(
         import_job.inserted += len(batch)
 
 
-def run_import(full: bool = False) -> dict:
+def run_import(full: bool = False, until: datetime | None = None) -> dict:
     """Scan all OPNsense filter log files and import what is missing.
 
     ``full=True`` re-imports every line regardless of the stored watermark
     (may create duplicates); the default mode only fills the gaps.
+
+    ``until`` caps the end of the gap window (used at startup, where it is the
+    time of the first syslog event received since boot: everything before it is
+    backfilled from the files while live syslog already covers what follows).
     """
     import_job.begin()
     try:
@@ -262,6 +293,7 @@ def run_import(full: bool = False) -> dict:
         overall = None if full else _global_max_event_time(repo)
         last_run = None if full else _get_last_run(repo)
         now = datetime.now(timezone.utc)
+        upper = until if (not full and until is not None) else now
         for path in files:
             import_job.current_file = path
             day = _file_day(path)
@@ -277,7 +309,7 @@ def run_import(full: bool = False) -> dict:
                 continue
             lower = last_run or overall
             window_start = max(start, lower)
-            window_end = min(end, now)
+            window_end = min(end, upper)
             if window_start >= window_end:
                 import_job.files_skipped += 1
                 import_job.files_scanned += 1
@@ -289,7 +321,7 @@ def run_import(full: bool = False) -> dict:
             # Record that we are up to date so the next restart only re-scans
             # the downtime window.
             try:
-                set_last_run(now)
+                set_last_run(upper)
             except Exception:  # noqa: BLE001 - heartbeat must not fail the job
                 logger.exception("Could not persist import heartbeat")
         logger.info(
@@ -305,13 +337,16 @@ def run_import(full: bool = False) -> dict:
     return import_job.snapshot()
 
 
-def start_import(full: bool = False) -> bool:
+def start_import(full: bool = False, until: datetime | None = None) -> bool:
     """Start the import in a background thread. Returns False if already running."""
     with import_job._lock:
         if import_job.running:
             return False
     thread = threading.Thread(
-        target=run_import, kwargs={"full": full}, name="filterlog-import", daemon=True
+        target=run_import,
+        kwargs={"full": full, "until": until},
+        name="filterlog-import",
+        daemon=True,
     )
     thread.start()
     return True

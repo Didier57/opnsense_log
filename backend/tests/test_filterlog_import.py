@@ -152,6 +152,38 @@ def test_run_import_skips_covered_day(database, monkeypatch):
     assert repo.count() == 1
 
 
+def test_first_event_after(database):
+    path = "/var/log/filter/filter_20261006.log"
+    repo = EventRepository()
+    seed = FakeSSH([], {f"cat {path}": [LINE_07H, LINE_10H]})
+    fi.import_job._reset_run()
+    fi._import_file(repo, seed, path, None, None)
+    assert fi.first_event_after(None) == datetime(2026, 10, 6, 7, 0, tzinfo=timezone.utc)
+    assert fi.first_event_after(datetime(2026, 10, 6, 7, 0, tzinfo=timezone.utc)) == datetime(
+        2026, 10, 6, 10, 0, tzinfo=timezone.utc
+    )
+    assert fi.first_event_after(datetime(2026, 10, 6, 10, 0, tzinfo=timezone.utc)) is None
+
+
+def test_run_import_until_caps_window(database, monkeypatch):
+    path = "/var/log/filter/filter_20261006.log"
+    repo = EventRepository()
+    # Seed 07:00 and 10:00 so the newest stored event (overall) is 10:00.
+    seed = FakeSSH([], {f"cat {path}": [LINE_07H, LINE_10H]})
+    fi.import_job._reset_run()
+    fi._import_file(repo, seed, path, None, None)
+    fi.set_last_run(datetime(2026, 10, 6, 7, 30, tzinfo=timezone.utc))
+    ssh = FakeSSH([path], {f"cat {path}": [LINE_08H, LINE_10H]})
+    monkeypatch.setattr(fi, "_build_ssh", lambda: ssh)
+    # until=08:30 caps the window: only the 08:00 record is imported, the 10:00
+    # one is left to live syslog (already covered).
+    result = fi.run_import(until=datetime(2026, 10, 6, 8, 30, tzinfo=timezone.utc))
+    assert result["error"] is None
+    assert result["inserted"] == 1
+    assert result["skipped"] == 1
+    assert repo.count() == 3
+
+
 def test_start_import_rejects_concurrent():
     fi.import_job._reset_run()
     fi.import_job.running = True

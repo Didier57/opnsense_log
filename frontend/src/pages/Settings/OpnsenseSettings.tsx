@@ -9,6 +9,7 @@ const FIELDS: { key: string; label: string; type?: string }[] = [
   { key: "opnsense_password", label: "Mot de passe (laisser vide pour conserver l'actuel)", type: "password" },
   { key: "opnsense_key_path", label: "Chemin de la clé privée" },
   { key: "opnsense_sync_interval_min", label: "Intervalle de synchronisation (min)", type: "number" },
+  { key: "opnsense_import_wait_syslog_sec", label: "Attente des premiers logs syslog avant import au démarrage (s)", type: "number" },
   { key: "opnsense_api_scheme", label: "Protocole API OPNsense (https / http)" },
   { key: "opnsense_api_port", label: "Port API OPNsense (celui de l'interface web)", type: "number" },
   { key: "opnsense_api_key", label: "Clé API OPNsense" },

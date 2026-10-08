@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     opnsense_sync_enabled: bool = False
     # Import firewall logs directly from the OPNsense log files over SSH on startup.
     opnsense_import_on_start: bool = True
+    opnsense_import_wait_syslog_sec: int = 120
     # OPNsense REST API credentials (used to manage firewall aliases for the
     # automatic blocking feature). Key/secret are created in the OPNsense GUI or
     # generated over SSH from the web UI.
