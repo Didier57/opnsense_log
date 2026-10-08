@@ -97,6 +97,7 @@ class BlockingSettings(BaseModel):
     blocking_ttl_hours: int | None = Field(default=None, ge=0)
     blocking_notify_email: bool | None = None
     blocking_token_days: int | None = Field(default=None, ge=1)
+    blocking_skip_tables: str | None = None
 
 
 class BlockRequest(BaseModel):

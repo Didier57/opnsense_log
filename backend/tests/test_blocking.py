@@ -90,6 +90,44 @@ def test_apply_ips_merges_existing(database, monkeypatch):
     assert fake.rows["BLOCK"]["content"] == ["1.2.3.4", "5.6.7.8"]
 
 
+def test_skip_tables_parsing():
+    assert blocker._skip_tables({"blocking_skip_tables": "crowdsec_blacklists, bad!name crowdsec6_blacklists"}) == [
+        "crowdsec_blacklists",
+        "crowdsec6_blacklists",
+    ]
+    assert blocker._skip_tables({"blocking_skip_tables": ""}) == []
+
+
+def test_apply_ips_skips_already_blocked(database, monkeypatch):
+    monkeypatch.setattr(
+        blocker, "get_blocking_settings", lambda: _cfg(blocking_skip_tables="crowdsec_blacklists")
+    )
+    fake = FakeAPI()
+    monkeypatch.setattr(blocker, "_api", lambda: fake)
+    monkeypatch.setattr(blocker, "_already_blocked", lambda ips, tables: {"1.2.3.4"})
+
+    result = blocker.apply_ips(["1.2.3.4", "5.6.7.8"])
+    assert result["added"] == ["5.6.7.8"]
+    assert result["skipped"] == ["1.2.3.4"]
+    assert fake.rows["BLOCK"]["content"] == ["5.6.7.8"]
+
+
+def test_apply_ips_all_already_blocked(database, monkeypatch):
+    monkeypatch.setattr(
+        blocker, "get_blocking_settings", lambda: _cfg(blocking_skip_tables="crowdsec_blacklists")
+    )
+    fake = FakeAPI()
+    monkeypatch.setattr(blocker, "_api", lambda: fake)
+    monkeypatch.setattr(blocker, "_already_blocked", lambda ips, tables: {"1.2.3.4"})
+
+    result = blocker.apply_ips(["1.2.3.4"])
+    assert result["ok"] is True
+    assert result["added"] == []
+    assert result["skipped"] == ["1.2.3.4"]
+    assert fake.reconfig == 0
+    assert blocker.list_blocked() == []
+
+
 def test_block_alerts_only_blockable_rules(database, monkeypatch):
     monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg())
     fake = FakeAPI()

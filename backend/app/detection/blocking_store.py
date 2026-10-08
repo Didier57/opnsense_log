@@ -4,7 +4,7 @@ from __future__ import annotations
 from ..config import settings
 from ..storage.database import get_database
 
-_STR_KEYS = ["blocking_alias", "blocking_mode", "blocking_whitelist"]
+_STR_KEYS = ["blocking_alias", "blocking_mode", "blocking_whitelist", "blocking_skip_tables"]
 _BOOL_KEYS = ["blocking_enabled", "blocking_notify_email"]
 _INT_KEYS = ["blocking_ttl_hours", "blocking_token_days"]
 _MINIMUMS = {"blocking_ttl_hours": 0, "blocking_token_days": 1}

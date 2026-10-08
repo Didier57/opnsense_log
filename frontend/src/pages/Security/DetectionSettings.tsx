@@ -50,6 +50,7 @@ interface BlockingForm {
   blocking_ttl_hours: number;
   blocking_notify_email: boolean;
   blocking_token_days: number;
+  blocking_skip_tables: string;
 }
 
 const DEFAULT_BLOCKING: BlockingForm = {
@@ -60,6 +61,7 @@ const DEFAULT_BLOCKING: BlockingForm = {
   blocking_ttl_hours: 0,
   blocking_notify_email: true,
   blocking_token_days: 7,
+  blocking_skip_tables: "crowdsec_blacklists, crowdsec6_blacklists",
 };
 
 export function DetectionSettings() {
@@ -84,6 +86,9 @@ export function DetectionSettings() {
           blocking_ttl_hours: Number(data.blocking_ttl_hours ?? 0),
           blocking_notify_email: Boolean(data.blocking_notify_email ?? true),
           blocking_token_days: Number(data.blocking_token_days ?? 7),
+          blocking_skip_tables: String(
+            data.blocking_skip_tables ?? "crowdsec_blacklists, crowdsec6_blacklists",
+          ),
         }),
       )
       .catch(() => undefined);
@@ -315,6 +320,16 @@ export function DetectionSettings() {
             style={{ width: "100%" }}
             value={blocking.blocking_whitelist}
             onChange={(e) => setBlocking({ ...blocking, blocking_whitelist: e.target.value })}
+          />
+        </label>
+        <label className="muted" style={{ fontSize: 12 }}>
+          Listes déjà bloquantes (tables pf / alias, séparés par des virgules — CrowdSec, Q-Feeds…).
+          Une IP déjà présente n'est ni rebloquée ni signalée.
+          <br />
+          <input
+            style={{ width: "100%" }}
+            value={blocking.blocking_skip_tables}
+            onChange={(e) => setBlocking({ ...blocking, blocking_skip_tables: e.target.value })}
           />
         </label>
         {blockMessage && <p className="muted">{blockMessage}</p>}

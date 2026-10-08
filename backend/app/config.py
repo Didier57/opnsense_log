@@ -70,6 +70,10 @@ class Settings(BaseSettings):
     blocking_notify_email: bool = True
     # Validity of the e-mail unblock link token (days).
     blocking_token_days: int = 7
+    # pf tables / firewall aliases that already block IPs (CrowdSec, Q-Feeds,
+    # IDS...). Comma or space separated. An IP already present in one of these is
+    # not blocked again and no notification is sent.
+    blocking_skip_tables: str = "crowdsec_blacklists, crowdsec6_blacklists"
 
     # --- Auth ---
     auth_enabled: bool = True
