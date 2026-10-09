@@ -45,8 +45,8 @@ export function OpnsenseStatus() {
               {status.database?.ok ? "OK" : "erreur"}
             </li>
             <li>
-              <span className="status-dot ok" /> Syslog {status.syslog?.protocol} :
-              {status.syslog?.port}
+              <span className={`status-dot ${status.syslog?.connected ? "ok" : "bad"}`} /> Syslog{" "}
+              {status.syslog?.protocol} :{status.syslog?.port}
             </li>
             <li>
               <span className={`status-dot ${status.websocket?.running ? "ok" : "bad"}`} /> WebSocket (

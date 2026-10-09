@@ -33,7 +33,7 @@ export function SystemStatus() {
         {status ? (
           <ul>
             <li>
-              <span className={`status-dot ${status.syslog?.running ? "ok" : "bad"}`} /> Écouteur Syslog{" "}
+              <span className={`status-dot ${status.syslog?.connected ? "ok" : "bad"}`} /> Écouteur Syslog{" "}
               {status.syslog?.protocol} :{status.syslog?.port}
             </li>
             <li>
@@ -44,7 +44,7 @@ export function SystemStatus() {
               <span className={`status-dot ${status.opnsense?.connected ? "ok" : "unknown"}`} /> OPNsense{" "}
               {status.opnsense?.connected ? "connecté" : "non connecté"}
             </li>
-            <li className="muted">Durée de fonctionnement {Math.round(status.uptime_seconds ?? 0)} s</li>
+            <li className="muted">Durée de fonctionnement {Math.round(monitoring?.uptime_seconds ?? 0)} s</li>
           </ul>
         ) : (
           <p className="muted">Chargement…</p>
