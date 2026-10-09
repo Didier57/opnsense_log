@@ -12,6 +12,13 @@ from ..parser.models import FirewallEvent
 
 logger = logging.getLogger("opnsense.live")
 
+# A burst of logs (e.g. a port scan) can produce several thousand events per
+# second. Sending one WebSocket frame per event would swamp the browser, so
+# events are coalesced into batches: after the first event we wait a short
+# moment to accumulate the burst, then flush everything queued in one frame.
+_COALESCE_SEC = 0.15
+_MAX_BATCH = 1000
+
 
 class LiveHub:
     def __init__(self) -> None:
@@ -50,12 +57,22 @@ class LiveHub:
         queue = await self.subscribe()
         try:
             # Prime the view with the most recent persisted events so the live
-            # table is not empty while waiting for new traffic.
-            for row in initial or []:
-                await websocket.send_json(_json_safe(row))
+            # table is not empty while waiting for new traffic. Sent as a single
+            # batched frame.
+            if initial:
+                await websocket.send_json([_json_safe(row) for row in initial])
             while True:
                 payload = await queue.get()
-                await websocket.send_json(payload)
+                batch = [payload]
+                # Let a burst accumulate, then flush everything already queued
+                # in one frame instead of one frame per event.
+                await asyncio.sleep(_COALESCE_SEC)
+                while len(batch) < _MAX_BATCH:
+                    try:
+                        batch.append(queue.get_nowait())
+                    except asyncio.QueueEmpty:
+                        break
+                await websocket.send_json(batch)
         except Exception:  # noqa: BLE001 - client disconnect
             pass
         finally:

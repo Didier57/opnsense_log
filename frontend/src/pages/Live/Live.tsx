@@ -65,7 +65,14 @@ export function Live() {
       socket.onmessage = (message) => {
         if (pausedRef.current) return;
         try {
-          pendingRef.current.push(JSON.parse(message.data) as FirewallEvent);
+          const data = JSON.parse(message.data) as FirewallEvent | FirewallEvent[];
+          const items = Array.isArray(data) ? data : [data];
+          const pending = pendingRef.current;
+          for (const item of items) pending.push(item);
+          // Keep only the newest events we could ever display so a sustained
+          // flood (e.g. a port scan) cannot grow this buffer without bound.
+          const cap = limitRef.current;
+          if (pending.length > cap) pending.splice(0, pending.length - cap);
         } catch {
           /* ignore malformed frames */
         }
