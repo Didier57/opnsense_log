@@ -19,6 +19,18 @@ function directionLabel(direction: string): string {
   return direction || "—";
 }
 
+function directionClass(direction: string): string {
+  if (direction === "in") return "direction-in";
+  if (direction === "out") return "direction-out";
+  return "other";
+}
+
+function directionArrow(direction: string): string {
+  if (direction === "in") return "↙";
+  if (direction === "out") return "↗";
+  return "";
+}
+
 export function LogTable({ events, onSelect, interfaceMap = {}, ruleMap = {}, hostnameMap = {}, countryMap = {} }: Props) {
   if (events.length === 0) {
     return <p className="muted">Aucun événement.</p>;
@@ -45,7 +57,12 @@ export function LogTable({ events, onSelect, interfaceMap = {}, ruleMap = {}, ho
                 <span className="truncate">{interfaceLabel(event, interfaceMap)}</span>
               </td>
               <td>
-                <span className="badge other">{directionLabel(event.direction)}</span>
+                <span className={`badge ${directionClass(event.direction)}`}>
+                  {directionArrow(event.direction) && (
+                    <span className="dir-arrow">{directionArrow(event.direction)}</span>
+                  )}
+                  {directionLabel(event.direction)}
+                </span>
               </td>
               <td className="mono">{formatDateTime(event.event_time)}</td>
               <td>{event.protocol}</td>
