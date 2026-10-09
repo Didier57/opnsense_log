@@ -3,7 +3,7 @@ interface Props {
   className?: string;
 }
 
-function countryName(code: string): string {
+export function countryName(code: string): string {
   try {
     return new Intl.DisplayNames(["fr"], { type: "region" }).of(code) ?? code;
   } catch {

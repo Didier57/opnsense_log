@@ -1,4 +1,4 @@
-import { CountryFlag } from "../CountryFlag";
+import { CountryFlag, countryName } from "../CountryFlag";
 
 interface Props {
   value: string[];
@@ -23,9 +23,9 @@ export function CountryFilter({ value, options, onChange }: Props) {
             key={code}
             className={`chip${value.includes(code) ? " active" : ""}`}
             onClick={() => toggle(code)}
-            title={code}
+            title={countryName(code)}
           >
-            <CountryFlag code={code} /> {code}
+            <CountryFlag code={code} /> {countryName(code)}
           </button>
         ))}
       </div>
