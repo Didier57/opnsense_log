@@ -128,6 +128,39 @@ def test_apply_ips_all_already_blocked(database, monkeypatch):
     assert blocker.list_blocked() == []
 
 
+def test_apply_ips_sends_block_notification(database, monkeypatch):
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg(blocking_notify_email=True))
+    fake = FakeAPI()
+    monkeypatch.setattr(blocker, "_api", lambda: fake)
+    sent = {}
+    monkeypatch.setattr(
+        blocker,
+        "send_block_notification",
+        lambda ips, rule="", reasons=None, days=7: sent.update(ips=ips, rule=rule) or {"ok": True},
+    )
+
+    result = blocker.apply_ips(["1.2.3.4"], rule="detection", source="auto")
+
+    assert result["added"] == ["1.2.3.4"]
+    assert sent == {"ips": ["1.2.3.4"], "rule": "detection"}
+
+
+def test_apply_ips_no_notification_when_disabled(database, monkeypatch):
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg(blocking_notify_email=False))
+    fake = FakeAPI()
+    monkeypatch.setattr(blocker, "_api", lambda: fake)
+    called = {"count": 0}
+    monkeypatch.setattr(
+        blocker,
+        "send_block_notification",
+        lambda *a, **k: called.update(count=called["count"] + 1) or {"ok": True},
+    )
+
+    blocker.apply_ips(["1.2.3.4"], rule="detection", source="auto")
+
+    assert called["count"] == 0
+
+
 def test_block_alerts_only_blockable_rules(database, monkeypatch):
     monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg())
     fake = FakeAPI()

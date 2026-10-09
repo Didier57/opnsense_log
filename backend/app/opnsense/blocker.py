@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 from ..storage.database import get_database
 from ..detection.blocking_store import get_blocking_settings
+from ..notifications.blocking_mail import send_block_notification
 from .api_client import APIError, OPNsenseAPI
 from .settings_store import get_opnsense_settings
 from .ssh import OPNsenseSSH, SSHError
