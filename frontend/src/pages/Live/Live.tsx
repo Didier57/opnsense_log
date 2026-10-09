@@ -55,18 +55,26 @@ export function Live() {
     let closed = false;
     let retry = 0;
     let reconnectTimer: number | null = null;
+    // Updated on every frame (events or heartbeat). If nothing is received for
+    // longer than this, the connection is considered dead and is reset.
+    let lastSeen = Date.now();
+    const STALE_MS = 35000;
 
     const connect = () => {
       socket = new WebSocket(liveSocketUrl());
       socket.onopen = () => {
         setConnected(true);
         retry = 0;
+        lastSeen = Date.now();
       };
       socket.onmessage = (message) => {
+        lastSeen = Date.now();
         if (pausedRef.current) return;
         try {
-          const data = JSON.parse(message.data) as FirewallEvent | FirewallEvent[];
-          const items = Array.isArray(data) ? data : [data];
+          const data = JSON.parse(message.data) as FirewallEvent | FirewallEvent[] | { heartbeat?: boolean };
+          // Heartbeat keep-alive frame: not an event.
+          if (!Array.isArray(data) && data && (data as { heartbeat?: boolean }).heartbeat) return;
+          const items = Array.isArray(data) ? data : [data as FirewallEvent];
           const pending = pendingRef.current;
           for (const item of items) pending.push(item);
           // Keep only the newest events we could ever display so a sustained
@@ -99,9 +107,20 @@ export function Live() {
       });
     }, 200);
 
+    // A firewall reboot can leave the socket half-open: no `close` event fires
+    // and the view freezes. If no frame (event or heartbeat) arrived for too
+    // long, drop the socket so the reconnect logic above kicks in.
+    const watchdog = window.setInterval(() => {
+      if (socket && socket.readyState === WebSocket.OPEN && Date.now() - lastSeen > STALE_MS) {
+        lastSeen = Date.now();
+        socket.close();
+      }
+    }, 5000);
+
     return () => {
       closed = true;
       window.clearInterval(flushTimer);
+      window.clearInterval(watchdog);
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
       socket?.close();
     };

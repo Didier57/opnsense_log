@@ -18,6 +18,11 @@ logger = logging.getLogger("opnsense.live")
 # moment to accumulate the burst, then flush everything queued in one frame.
 _COALESCE_SEC = 0.15
 _MAX_BATCH = 1000
+# When no event flows, a heartbeat is sent so an idle-but-dead connection (e.g.
+# after a firewall reboot that leaves the socket half-open) is detected: the
+# send fails on the server side and the client watchdog reconnects.
+_HEARTBEAT_SEC = 15
+_HEARTBEAT = {"heartbeat": True}
 
 
 class LiveHub:
@@ -62,7 +67,13 @@ class LiveHub:
             if initial:
                 await websocket.send_json([_json_safe(row) for row in initial])
             while True:
-                payload = await queue.get()
+                try:
+                    payload = await asyncio.wait_for(queue.get(), timeout=_HEARTBEAT_SEC)
+                except asyncio.TimeoutError:
+                    # Nothing to send: keep the connection warm and let a dead
+                    # peer be detected when the heartbeat send fails.
+                    await websocket.send_json(_HEARTBEAT)
+                    continue
                 batch = [payload]
                 # Let a burst accumulate, then flush everything already queued
                 # in one frame instead of one frame per event.
