@@ -120,35 +120,41 @@ export function Dashboard() {
           }}
         />
       </div>
-      <div className="cards">
-        <StatCard label="Événements" value={summary?.total ?? 0} />
-        <StatCard label="Bloqués" value={summary?.blocked ?? 0} />
-        <StatCard label="Autorisés" value={summary?.passed ?? 0} />
-        <StatCard label="Interfaces" value={summary?.interfaces ?? 0} />
-      </div>
-      <div className="grid-3">
-        <BarList title="Pays sources" items={toGeo(overview?.countries)} flags />
-        <BarList title="Pays destinations" items={toGeo(overview?.dst_countries)} flags />
-        <BarList title="Bloqués par pays source" items={toGeo(overview?.countries_blocked)} flags />
-      </div>
-      <div className="grid-3">
-        <BarList title="Principales IP sources externes" items={overview?.src_external ?? []} />
-        <BarList title="Principales IP sources internes" items={overview?.src_internal ?? []} />
-        <BarList title="IP les plus bloquées" items={overview?.blocked_ips ?? []} />
-      </div>
-      <div className="grid-3">
-        <BarList title="Principales IP destinations externes" items={overview?.dst_external ?? []} />
-        <BarList title="Principales IP destinations internes" items={overview?.dst_internal ?? []} />
-        <BarList title="Principaux ports de destination" items={overview?.dst_ports ?? []} />
-      </div>
-      <div className="grid-3">
-        <BarList title="Principaux ports source" items={overview?.src_ports ?? []} />
-        <BarList title="Protocoles" items={overview?.protocols ?? []} />
-        <BarList title="Sens du trafic" items={directions} />
-      </div>
-      <div className="grid-2">
-        <BarList title="Principales règles" items={overview?.rules ?? []} />
-      </div>
+      {summary ? (
+        <>
+          <div className="cards">
+            <StatCard label="Événements" value={summary?.total ?? 0} />
+            <StatCard label="Bloqués" value={summary?.blocked ?? 0} />
+            <StatCard label="Autorisés" value={summary?.passed ?? 0} />
+            <StatCard label="Interfaces" value={summary?.interfaces ?? 0} />
+          </div>
+          <div className="grid-3">
+            <BarList title="Pays sources" items={toGeo(overview?.countries)} flags />
+            <BarList title="Pays destinations" items={toGeo(overview?.dst_countries)} flags />
+            <BarList title="Bloqués par pays source" items={toGeo(overview?.countries_blocked)} flags />
+          </div>
+          <div className="grid-3">
+            <BarList title="Principales IP sources externes" items={overview?.src_external ?? []} />
+            <BarList title="Principales IP sources internes" items={overview?.src_internal ?? []} />
+            <BarList title="IP les plus bloquées" items={overview?.blocked_ips ?? []} />
+          </div>
+          <div className="grid-3">
+            <BarList title="Principales IP destinations externes" items={overview?.dst_external ?? []} />
+            <BarList title="Principales IP destinations internes" items={overview?.dst_internal ?? []} />
+            <BarList title="Principaux ports de destination" items={overview?.dst_ports ?? []} />
+          </div>
+          <div className="grid-3">
+            <BarList title="Principaux ports source" items={overview?.src_ports ?? []} />
+            <BarList title="Protocoles" items={overview?.protocols ?? []} />
+            <BarList title="Sens du trafic" items={directions} />
+          </div>
+          <div className="grid-2">
+            <BarList title="Principales règles" items={overview?.rules ?? []} />
+          </div>
+        </>
+      ) : (
+        <p className="muted">Chargement des statistiques…</p>
+      )}
     </>
   );
 }
