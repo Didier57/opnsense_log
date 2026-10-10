@@ -11,7 +11,7 @@ export function Dashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [auto, setAuto] = useState(true);
-  const [intervalSec, setIntervalSec] = useState(5);
+  const [intervalSec, setIntervalSec] = useState(30);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const inflight = useRef(false);
@@ -78,6 +78,8 @@ export function Dashboard() {
 
   const toGeo = (items: GeoItem[] | undefined) =>
     (items ?? []).map((c) => ({ value: c.value, label: `${c.name} (${c.value})`, count: c.count }));
+  const toGeoBlocked = (items: GeoItem[] | undefined) =>
+    (items ?? []).map((c) => ({ value: c.value, label: `${c.name} (${c.value})`, count: c.blocked ?? 0 }));
   const directionLabel = (value: unknown) =>
     value === "in" ? "Entrant" : value === "out" ? "Sortant" : String(value);
   const directions = (overview?.directions ?? []).map((d: TopItem) => ({
@@ -131,7 +133,7 @@ export function Dashboard() {
           <div className="grid-3">
             <BarList title="Pays sources" items={toGeo(overview?.countries)} flags />
             <BarList title="Pays destinations" items={toGeo(overview?.dst_countries)} flags />
-            <BarList title="Bloqués par pays source" items={toGeo(overview?.countries_blocked)} flags />
+            <BarList title="Bloqués par pays source" items={toGeoBlocked(overview?.countries_blocked)} flags />
           </div>
           <div className="grid-3">
             <BarList title="Principales IP sources externes" items={overview?.src_external ?? []} />

@@ -141,14 +141,15 @@ table.log-table tr:hover { background: var(--bg-alt); cursor: pointer; }
 .error { color: var(--block); font-size: 13px; margin: 8px 0; }
 .muted { color: var(--text-dim); }
 .mono { font-family: "SFMono-Regular", Consolas, monospace; }
-.bar-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 12px; }
-.bar-row .bar { height: 14px; background: var(--accent); border-radius: 3px; }
-.bar-row .bar-split { display: flex; overflow: hidden; background: none; }
+.bar-row { display: grid; grid-template-columns: 140px minmax(0, 1fr) auto; align-items: center; gap: 8px; margin: 4px 0; font-size: 12px; }
+.bar-row .k { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-track { position: relative; height: 14px; background: rgba(148, 163, 184, 0.10); border-radius: 3px; overflow: hidden; }
+.bar-row .bar { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.bar-row .bar-split { display: flex; overflow: hidden; background: none; border-radius: 0; }
 .bar-row .seg { display: flex; align-items: center; justify-content: center; height: 100%; font-size: 10px; line-height: 1; color: #fff; overflow: hidden; white-space: nowrap; }
 .bar-row .seg-pass { background: var(--accent); }
 .bar-row .seg-block { background: var(--block); }
-.bar-row .k { width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bar-row .n { color: var(--text-dim); margin-left: auto; }
+.bar-row .n { color: var(--text-dim); }
 
 .whois-btn {
   padding: 1px 6px;

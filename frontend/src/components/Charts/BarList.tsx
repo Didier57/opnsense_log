@@ -29,7 +29,7 @@ export function BarList({
         const empty = item.value === null || item.value === "";
         const text = item.label ?? (empty ? "(aucun)" : String(item.value));
         const widthPct = (item.count / max) * 100;
-        const split = item.passed !== undefined || item.blocked !== undefined;
+        const split = item.passed !== undefined && item.blocked !== undefined;
         let bar;
         if (split) {
           const passed = item.passed ?? 0;
@@ -75,7 +75,7 @@ export function BarList({
               {flags && !empty ? <CountryFlag code={String(item.value)} /> : null}
               {text}
             </span>
-            {bar}
+            <span className="bar-track">{bar}</span>
             <span className="n">{formatNumber(item.count)}</span>
           </div>
         );
