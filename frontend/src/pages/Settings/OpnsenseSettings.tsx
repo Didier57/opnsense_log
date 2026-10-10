@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api/client";
+import { useInstance } from "../../instance";
 
 const FIELDS: { key: string; label: string; type?: string }[] = [
   { key: "opnsense_host", label: "Hôte" },
@@ -18,6 +19,7 @@ const FIELDS: { key: string; label: string; type?: string }[] = [
 ];
 
 export function OpnsenseSettings() {
+  const { instances, instance } = useInstance();
   const [form, setForm] = useState<Record<string, any>>({});
   const [hasPassword, setHasPassword] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
@@ -37,6 +39,8 @@ export function OpnsenseSettings() {
         });
         next.opnsense_sync_enabled = Boolean(data.opnsense_sync_enabled);
         next.opnsense_import_on_start = Boolean(data.opnsense_import_on_start);
+        next.opnsense_ha_enabled = Boolean(data.opnsense_ha_enabled);
+        next.opnsense_ha_master = data.opnsense_ha_master ?? "";
         setHasPassword(Boolean(data.has_password));
         setHasApiKey(Boolean(data.has_api_key));
         setHasApiSecret(Boolean(data.has_api_secret));
@@ -148,7 +152,15 @@ export function OpnsenseSettings() {
           <button onClick={testApi} disabled={busy}>
             Tester l'API
           </button>
-          <button onClick={generateKey} disabled={busy}>
+          <button
+            onClick={generateKey}
+            disabled={busy || Boolean(form.opnsense_ha_enabled)}
+            title={
+              Boolean(form.opnsense_ha_enabled)
+                ? "En HA, générez la clé sur l'instance maître : elle sera héritée ici"
+                : undefined
+            }
+          >
             Générer la clé API (SSH)
           </button>
           <button className="active" onClick={save} disabled={busy}>
@@ -173,6 +185,47 @@ export function OpnsenseSettings() {
           />
           Récupérer les logs OPNsense (fichiers) au démarrage de l'application
         </label>
+        <label className="filters">
+          <input
+            type="checkbox"
+            checked={Boolean(form.opnsense_ha_enabled)}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                opnsense_ha_enabled: e.target.checked,
+                opnsense_ha_master: e.target.checked ? form.opnsense_ha_master || "" : "",
+              })
+            }
+          />
+          Ce pare-feu fait partie d'un cluster Haute Disponibilité (HA)
+        </label>
+        {form.opnsense_ha_enabled && (
+          <div style={{ marginBottom: 10 }}>
+            <label className="muted" style={{ display: "block", marginBottom: 4 }}>
+              Instance maître (clé API héritée)
+            </label>
+            <select
+              value={form.opnsense_ha_master ?? ""}
+              onChange={(e) => setForm({ ...form, opnsense_ha_master: e.target.value })}
+              style={{ width: 320 }}
+            >
+              <option value="">— Choisir —</option>
+              {instances
+                .filter((inst) => inst.id !== instance?.id)
+                .map((inst) => (
+                  <option key={inst.id} value={inst.id}>
+                    {inst.name}
+                    {inst.enabled ? "" : " (désactivée)"}
+                  </option>
+                ))}
+            </select>
+            <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+              En HA, OPNsense réplique la configuration (clés API comprises) du maître. La clé et le
+              secret de cette instance sont donc <strong>hérités en direct</strong> de l'instance
+              maître : une seule clé sert aux deux nœuds, plus de désynchronisation.
+            </p>
+          </div>
+        )}
         {message && <p className="muted">{message}</p>}
         {error && <p className="error">{error}</p>}
         {FIELDS.map((field) => (
@@ -185,6 +238,10 @@ export function OpnsenseSettings() {
             <input
               type={field.type || "text"}
               value={form[field.key] ?? ""}
+              disabled={
+                Boolean(form.opnsense_ha_enabled) &&
+                (field.key === "opnsense_api_key" || field.key === "opnsense_api_secret")
+              }
               placeholder={
                 (field.key === "opnsense_password" && hasPassword) ||
                 (field.key === "opnsense_api_secret" && hasApiSecret) ||

@@ -27,6 +27,8 @@ _KEYS = [
     "opnsense_api_secret",
     "opnsense_api_scheme",
     "opnsense_api_port",
+    "opnsense_ha_enabled",
+    "opnsense_ha_master",
 ]
 
 
@@ -36,8 +38,13 @@ def _as_bool(value: object) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
-def get_opnsense_settings(mask_password: bool = True, instance_id: str | None = None) -> dict:
-    db = get_database(resolve_instance_id(instance_id))
+def get_opnsense_settings(
+    mask_password: bool = True,
+    instance_id: str | None = None,
+    _inherit_ha: bool = True,
+) -> dict:
+    resolved = resolve_instance_id(instance_id)
+    db = get_database(resolved)
     overrides: dict[str, str] = {}
     try:
         rows = db.execute_read('SELECT "key", "value" FROM app_settings').fetchall()
@@ -47,6 +54,24 @@ def get_opnsense_settings(mask_password: bool = True, instance_id: str | None = 
 
     def value(key: str):
         return overrides.get(key, getattr(settings, key, ""))
+
+    # High availability: OPNsense replicates the config (including the API
+    # keys) from the master node to the backup, so a key managed per node gets
+    # overwritten. When HA is enabled, this instance therefore uses the API
+    # key/secret of the chosen master instance instead of its own.
+    ha_enabled = _as_bool(value("opnsense_ha_enabled"))
+    ha_master = value("opnsense_ha_master") or ""
+    api_key = value("opnsense_api_key")
+    api_secret = value("opnsense_api_secret")
+    if _inherit_ha and ha_enabled and ha_master and ha_master != resolved:
+        try:
+            master = get_opnsense_settings(
+                mask_password=False, instance_id=ha_master, _inherit_ha=False
+            )
+            api_key = master.get("opnsense_api_key", "")
+            api_secret = master.get("opnsense_api_secret", "")
+        except Exception:  # noqa: BLE001 - inherit best effort
+            pass
 
     result = {
         "opnsense_host": value("opnsense_host"),
@@ -62,15 +87,18 @@ def get_opnsense_settings(mask_password: bool = True, instance_id: str | None = 
         ),
         "opnsense_import_max_days": max(0, int(value("opnsense_import_max_days") or 7)),
         "has_password": bool(value("opnsense_password")),
-        "has_api_key": bool(value("opnsense_api_key")),
-        "has_api_secret": bool(value("opnsense_api_secret")),
+        "has_api_key": bool(api_key),
+        "has_api_secret": bool(api_secret),
         "opnsense_api_scheme": (str(value("opnsense_api_scheme") or "https").lower() or "https"),
         "opnsense_api_port": int(value("opnsense_api_port") or 443),
+        "opnsense_ha_enabled": ha_enabled,
+        "opnsense_ha_master": ha_master,
+        "api_key_from_master": bool(ha_enabled and ha_master and ha_master != resolved),
     }
     if not mask_password:
         result["opnsense_password"] = value("opnsense_password")
-        result["opnsense_api_key"] = value("opnsense_api_key")
-        result["opnsense_api_secret"] = value("opnsense_api_secret")
+        result["opnsense_api_key"] = api_key
+        result["opnsense_api_secret"] = api_secret
     return result
 
 
