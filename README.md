@@ -108,20 +108,23 @@ Le stockage utilise **DuckDB** (colonnes, adapté à l'analytique, mono-fichier,
 
 ## Démarrage rapide
 
-1. Copiez le fichier d'environnement (identifiants par défaut `admin` / `admin`) :
+1. Copiez le fichier d'environnement et démarrez :
 
    ```bash
    cp .env.example .env
    docker compose up -d
    ```
 
-   Définissez `AUTH_USERNAME` / `AUTH_PASSWORD` dans `.env` (ou `docker-compose.yml`) pour
-   changer l'identifiant. Aucune étape de hachage n'est nécessaire. Pour un mot de passe
-   haché, définissez plutôt `AUTH_PASSWORD_HASH` (générez-le avec
-   `docker compose run --rm opnsense-log-analyzer python scripts/hash_password.py`) ; il est
-   prioritaire sur `AUTH_PASSWORD` lorsqu'il est défini.
+   Aucun identifiant n'est nécessaire dans `.env` : au **premier lancement**, une page
+   d'**enregistrement** vous invite à créer le compte **administrateur**. Les comptes
+   (rôles **admin** / **viewer**) se gèrent ensuite dans **Paramètres → Utilisateurs**.
 
-2. Ouvrez l'interface web sur <http://SERVER_IP:8080> et connectez-vous.
+   *Migration* : si vous aviez déjà un administrateur défini via `AUTH_USERNAME` /
+   `AUTH_PASSWORD` (ou `AUTH_PASSWORD_HASH`) dans `.env`, il est **migré
+   automatiquement** au premier démarrage (voir le log `Created initial administrator…`) ;
+   vous pouvez ensuite retirer ces variables.
+
+2. Ouvrez l'interface web sur <http://SERVER_IP:8080> et créez votre compte administrateur.
 
 3. Configurez OPNsense pour envoyer les journaux vers cet hôte :
 
@@ -165,13 +168,15 @@ Toute la configuration se fait via des variables d'environnement (voir `.env.exa
 | `DATA_DIR` | `/data` | répertoire de données (monter un volume ici) |
 | `LOG_RETENTION_DAYS` | `30` | rétention en jours (`0` = illimitée) |
 | `AUTH_ENABLED` | `true` | activer l'authentification locale |
-| `AUTH_USERNAME` | `admin` | nom d'utilisateur |
-| `AUTH_PASSWORD` | `admin` | mot de passe (en clair, configuration la plus simple) |
-| `AUTH_PASSWORD_HASH` | – | hachage Argon2 ; prioritaire sur `AUTH_PASSWORD` |
 | `SECRET_KEY` | – | secret de signature JWT |
 | `DISPLAY_TIMEZONE` | `Europe/Luxembourg` | fuseau horaire utilisé pour l'affichage |
 | `SYSLOG_TIMEZONE` | `DISPLAY_TIMEZONE` | fuseau dans lequel OPNsense émet les horodatages syslog |
 | `LOG_LEVEL` | `INFO` | `INFO`/`WARNING`/`ERROR`/`DEBUG` |
+
+Les comptes utilisateurs (rôles **admin** / **viewer**) ne se configurent plus par variables
+d'environnement : ils sont créés à la première connexion puis gérés dans
+**Paramètres → Utilisateurs**. `AUTH_USERNAME` / `AUTH_PASSWORD` / `AUTH_PASSWORD_HASH`
+restent acceptés **uniquement** pour migrer un administrateur existant au premier démarrage.
 
 La connexion SSH à OPNsense (hôte, port, nom d'utilisateur, type d'authentification,
 mot de passe/chemin de clé, synchronisation activée et intervalle) se configure **depuis
