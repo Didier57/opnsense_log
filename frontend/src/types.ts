@@ -76,6 +76,7 @@ export interface OpnsenseRule {
   rule_id: string;
   description: string;
   interface: string;
+  interface_description?: string;
   action: string;
   direction: string;
   protocol: string;

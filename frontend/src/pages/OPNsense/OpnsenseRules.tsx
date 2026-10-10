@@ -41,7 +41,12 @@ export function OpnsenseRules() {
                   <td className="desc-cell" title={rule.description}>
                     {rule.description}
                   </td>
-                  <td>{rule.interface}</td>
+                  <td>
+                    {rule.interface}
+                    {rule.interface_description && (
+                      <span className="muted"> ({rule.interface_description})</span>
+                    )}
+                  </td>
                   <td>{rule.action}</td>
                   <td>{rule.direction}</td>
                   <td>{rule.protocol}</td>

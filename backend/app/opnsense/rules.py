@@ -8,14 +8,16 @@ def list_rules() -> list[dict]:
     db = get_database()
     rows = db.execute_read(
         """
-        SELECT rule_id, rule_number, description, interface, action, direction,
-               protocol, source, destination, enabled, updated_at
-        FROM opnsense_rules ORDER BY description
+        SELECT r.rule_id, r.rule_number, r.description, r.interface, i.description,
+               r.action, r.direction, r.protocol, r.source, r.destination, r.enabled, r.updated_at
+        FROM opnsense_rules r
+        LEFT JOIN opnsense_interfaces i ON i.name = r.interface
+        ORDER BY r.description
         """
     ).fetchall()
     keys = [
-        "rule_id", "rule_number", "description", "interface", "action", "direction",
-        "protocol", "source", "destination", "enabled", "updated_at",
+        "rule_id", "rule_number", "description", "interface", "interface_description",
+        "action", "direction", "protocol", "source", "destination", "enabled", "updated_at",
     ]
     return [dict(zip(keys, row)) for row in rows]
 
@@ -23,15 +25,17 @@ def list_rules() -> list[dict]:
 def get_rule(rule_id: str) -> dict | None:
     db = get_database()
     row = db.execute_read(
-        "SELECT rule_id, description, interface, action, direction, protocol, "
-        "source, destination, enabled, updated_at FROM opnsense_rules WHERE rule_id = ?",
+        "SELECT r.rule_id, r.description, r.interface, i.description, r.action, r.direction, "
+        "r.protocol, r.source, r.destination, r.enabled, r.updated_at "
+        "FROM opnsense_rules r "
+        "LEFT JOIN opnsense_interfaces i ON i.name = r.interface WHERE r.rule_id = ?",
         [rule_id],
     ).fetchone()
     if row is None:
         return None
     keys = [
-        "rule_id", "description", "interface", "action", "direction",
-        "protocol", "source", "destination", "enabled", "updated_at",
+        "rule_id", "description", "interface", "interface_description", "action",
+        "direction", "protocol", "source", "destination", "enabled", "updated_at",
     ]
     return dict(zip(keys, row))
 
