@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from ..config import settings
+from ..instances import resolve_instance_id
 from ..storage.database import get_database
 
 _NETWORK_TIMEOUT = 2.0  # seconds to wait for a single PTR lookup
@@ -31,7 +32,7 @@ class _Entry:
 
 class HostnameResolver:
     def __init__(self) -> None:
-        self._mem: dict[str, _Entry] = {}
+        self._mem: dict[tuple[str | None, str], _Entry] = {}
         self._lock = threading.Lock()
         self._pool = ThreadPoolExecutor(max_workers=_MAX_WORKERS, thread_name_prefix="rdns")
 
@@ -42,13 +43,13 @@ class HostnameResolver:
             minutes = 1440
         return max(minutes, 1) * 60
 
-    def _dhcp_lookup(self, ips: list[str]) -> dict[str, str]:
+    def _dhcp_lookup(self, ips: list[str], instance_id: str | None = None) -> dict[str, str]:
         """Hostnames learned from the firewall's DHCP leases (via SSH sync)."""
         if not ips:
             return {}
         placeholders = ", ".join("?" for _ in ips)
         try:
-            rows = get_database().execute_read(
+            rows = get_database(resolve_instance_id(instance_id)).execute_read(
                 f'SELECT "ip", "hostname" FROM dhcp_leases '
                 f'WHERE "ip" IN ({placeholders}) AND "hostname" IS NOT NULL',
                 list(ips),
@@ -57,13 +58,13 @@ class HostnameResolver:
             return {}
         return {ip: hostname for ip, hostname in rows if hostname}
 
-    def _db_lookup(self, ips: list[str]) -> dict[str, str]:
+    def _db_lookup(self, ips: list[str], instance_id: str | None = None) -> dict[str, str]:
         if not ips:
             return {}
         placeholders = ", ".join("?" for _ in ips)
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=self._ttl())
         try:
-            rows = get_database().execute_read(
+            rows = get_database(resolve_instance_id(instance_id)).execute_read(
                 f'SELECT "ip", "hostname" FROM hostname_cache '
                 f'WHERE "ip" IN ({placeholders}) AND "updated_at" >= ?',
                 [*ips, cutoff],
@@ -72,11 +73,11 @@ class HostnameResolver:
             return {}
         return {ip: hostname for ip, hostname in rows if hostname}
 
-    def _db_store(self, mapping: dict[str, str]) -> None:
+    def _db_store(self, mapping: dict[str, str], instance_id: str | None = None) -> None:
         if not mapping:
             return
         try:
-            get_database().executemany_write(
+            get_database(resolve_instance_id(instance_id)).executemany_write(
                 'INSERT INTO hostname_cache ("ip", "hostname", "updated_at") VALUES (?, ?, now()) '
                 'ON CONFLICT ("ip") DO UPDATE SET "hostname" = excluded."hostname", '
                 '"updated_at" = excluded."updated_at"',
@@ -103,7 +104,7 @@ class HostnameResolver:
                 out[ip] = None
         return out
 
-    def resolve(self, ips: list[str]) -> dict[str, str | None]:
+    def resolve(self, ips: list[str], instance_id: str | None = None) -> dict[str, str | None]:
         unique: list[str] = []
         seen: set[str] = set()
         for raw in ips:
@@ -122,7 +123,7 @@ class HostnameResolver:
         missing: list[str] = []
         with self._lock:
             for ip in unique:
-                entry = self._mem.get(ip)
+                entry = self._mem.get((instance_id, ip))
                 if entry and entry.expires > now:
                     result[ip] = entry.hostname
                 else:
@@ -132,17 +133,17 @@ class HostnameResolver:
             return result
 
         ttl = self._ttl()
-        dhcp_hits = self._dhcp_lookup(missing)
-        db_hits = self._db_lookup(missing)
+        dhcp_hits = self._dhcp_lookup(missing, instance_id)
+        db_hits = self._db_lookup(missing, instance_id)
         to_resolve: list[str] = []
         with self._lock:
             for ip in missing:
                 if ip in dhcp_hits:
                     result[ip] = dhcp_hits[ip]
-                    self._mem[ip] = _Entry(dhcp_hits[ip], now + ttl)
+                    self._mem[(instance_id, ip)] = _Entry(dhcp_hits[ip], now + ttl)
                 elif ip in db_hits:
                     result[ip] = db_hits[ip]
-                    self._mem[ip] = _Entry(db_hits[ip], now + ttl)
+                    self._mem[(instance_id, ip)] = _Entry(db_hits[ip], now + ttl)
                 else:
                     to_resolve.append(ip)
 
@@ -152,10 +153,12 @@ class HostnameResolver:
             with self._lock:
                 for ip, hostname in resolved.items():
                     result[ip] = hostname
-                    self._mem[ip] = _Entry(hostname, now + (ttl if hostname else _NEGATIVE_TTL))
+                    self._mem[(instance_id, ip)] = _Entry(
+                        hostname, now + (ttl if hostname else _NEGATIVE_TTL)
+                    )
                     if hostname:
                         found[ip] = hostname
-            self._db_store(found)
+            self._db_store(found, instance_id)
 
         return result
 

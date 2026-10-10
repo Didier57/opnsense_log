@@ -53,20 +53,25 @@ def decode_token(token: str) -> dict | None:
         return None
 
 
-def create_unblock_token(ip: str, days: int = 7) -> str:
-    """Signed, expiring token authorising the unblock of a single IP."""
+def create_unblock_token(ip: str, days: int = 7, instance_id: str | None = None) -> str:
+    """Signed, expiring token authorising the unblock of a single IP.
+
+    The token also carries the instance the IP was blocked on so the unblock
+    page edits the right firewall.
+    """
     now = datetime.now(timezone.utc)
     payload = {
         "scope": "unblock",
         "ip": ip,
+        "instance_id": instance_id or "",
         "exp": now + timedelta(days=max(1, int(days))),
         "iat": now,
     }
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 
-def decode_unblock_token(token: str) -> str | None:
-    """Return the IP carried by a valid unblock token, else ``None``."""
+def decode_unblock_token_data(token: str) -> dict | None:
+    """Return the full payload of a valid unblock token, else ``None``."""
     if not token:
         return None
     try:
@@ -75,4 +80,10 @@ def decode_unblock_token(token: str) -> str | None:
         return None
     if data.get("scope") != "unblock":
         return None
-    return data.get("ip") or None
+    return data
+
+
+def decode_unblock_token(token: str) -> str | None:
+    """Return the IP carried by a valid unblock token, else ``None``."""
+    data = decode_unblock_token_data(token)
+    return (data.get("ip") or None) if data else None

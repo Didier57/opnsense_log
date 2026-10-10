@@ -17,10 +17,10 @@ from app.storage.repository import EventRepository
 @pytest.fixture
 def db(tmp_path, monkeypatch):
     database = Database(str(tmp_path / "detection.duckdb"))
-    monkeypatch.setattr(dstore, "get_database", lambda: database)
-    monkeypatch.setattr(deng, "get_database", lambda: database)
-    monkeypatch.setattr(nstore, "get_database", lambda: database)
-    monkeypatch.setattr(alstore, "get_database", lambda: database)
+    monkeypatch.setattr(dstore, "get_database", lambda *a, **k: database)
+    monkeypatch.setattr(deng, "get_database", lambda *a, **k: database)
+    monkeypatch.setattr(nstore, "get_database", lambda *a, **k: database)
+    monkeypatch.setattr(alstore, "get_database", lambda *a, **k: database)
     return database
 
 
@@ -226,7 +226,7 @@ def test_notify_skips_alert_blocked_by_other_plugin(db, monkeypatch):
     calls = _capture_mail(monkeypatch)
     monkeypatch.setattr(
         "app.detection.blocking_store.get_blocking_settings",
-        lambda: {"blocking_alias": "BLOCK_IP"},
+        lambda *a, **k: {"blocking_alias": "BLOCK_IP"},
     )
     alert = {
         "id": "bruteforce:1.2.3.4:1",
@@ -245,7 +245,7 @@ def test_notify_sends_alert_blocked_by_own_alias(db, monkeypatch):
     calls = _capture_mail(monkeypatch)
     monkeypatch.setattr(
         "app.detection.blocking_store.get_blocking_settings",
-        lambda: {"blocking_alias": "BLOCK_IP"},
+        lambda *a, **k: {"blocking_alias": "BLOCK_IP"},
     )
     alert = {
         "id": "bruteforce:1.2.3.4:1",

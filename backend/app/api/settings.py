@@ -10,14 +10,14 @@ from ..opnsense.config_loader import parse_webgui
 from ..opnsense.settings_store import get_opnsense_settings, update_opnsense_settings
 from ..opnsense.ssh import OPNsenseSSH, SSHError
 from ..settings_store import get_app_settings, update_app_settings
-from .deps import require_user
+from .deps import InstanceId, require_user
 from .schemas import ApplicationSettings, OPNsenseSettings
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
 @router.get("")
-def get_settings(user: str = Depends(require_user)) -> dict:
+def get_settings(instance: str | None = InstanceId, user: str = Depends(require_user)) -> dict:
     app_cfg = get_app_settings()
     return {
         "syslog": {
@@ -37,7 +37,7 @@ def get_settings(user: str = Depends(require_user)) -> dict:
             "log_level": settings.log_level,
             "retention_check_interval_min": app_cfg["retention_check_interval_min"],
         },
-        "opnsense": get_opnsense_settings(mask_password=True),
+        "opnsense": get_opnsense_settings(mask_password=True, instance_id=instance),
     }
 
 
@@ -53,18 +53,20 @@ def put_application(payload: ApplicationSettings, user: str = Depends(require_us
 
 
 @router.get("/opnsense")
-def get_opnsense(user: str = Depends(require_user)) -> dict:
-    return get_opnsense_settings(mask_password=True)
+def get_opnsense(instance: str | None = InstanceId, user: str = Depends(require_user)) -> dict:
+    return get_opnsense_settings(mask_password=True, instance_id=instance)
 
 
 @router.put("/opnsense")
-def put_opnsense(payload: OPNsenseSettings, user: str = Depends(require_user)) -> dict:
-    return update_opnsense_settings(payload.model_dump(exclude_none=True))
+def put_opnsense(
+    payload: OPNsenseSettings, instance: str | None = InstanceId, user: str = Depends(require_user)
+) -> dict:
+    return update_opnsense_settings(payload.model_dump(exclude_none=True), instance_id=instance)
 
 
 @router.post("/opnsense/test")
-def test_opnsense(user: str = Depends(require_user)) -> dict:
-    cfg = get_opnsense_settings(mask_password=False)
+def test_opnsense(instance: str | None = InstanceId, user: str = Depends(require_user)) -> dict:
+    cfg = get_opnsense_settings(mask_password=False, instance_id=instance)
     if not cfg.get("opnsense_host"):
         return {"ok": False, "message": "OPNsense host not configured"}
     client = OPNsenseSSH(
@@ -80,21 +82,26 @@ def test_opnsense(user: str = Depends(require_user)) -> dict:
 
 
 @router.post("/opnsense/generate-api-key")
-def generate_opnsense_api_key(user: str = Depends(require_user)) -> dict:
-    cfg = get_opnsense_settings(mask_password=False)
+def generate_opnsense_api_key(
+    instance: str | None = InstanceId, user: str = Depends(require_user)
+) -> dict:
+    cfg = get_opnsense_settings(mask_password=False, instance_id=instance)
     if not cfg.get("opnsense_host"):
         return {"ok": False, "message": "OPNsense host not configured"}
     result = generate_api_key(cfg.get("opnsense_username") or "root")
     if not result.get("ok"):
         return {"ok": False, "message": result.get("error", "generation failed")}
-    update_opnsense_settings({"opnsense_api_key": result["key"], "opnsense_api_secret": result["secret"]})
+    update_opnsense_settings(
+        {"opnsense_api_key": result["key"], "opnsense_api_secret": result["secret"]},
+        instance_id=instance,
+    )
     return {"ok": True, "message": "Clé API générée et enregistrée"}
 
 
 @router.post("/opnsense/detect-api")
-def detect_opnsense_api(user: str = Depends(require_user)) -> dict:
+def detect_opnsense_api(instance: str | None = InstanceId, user: str = Depends(require_user)) -> dict:
     """Detect the web GUI protocol/port over SSH (the API shares that endpoint)."""
-    cfg = get_opnsense_settings(mask_password=False)
+    cfg = get_opnsense_settings(mask_password=False, instance_id=instance)
     if not cfg.get("opnsense_host"):
         return {"ok": False, "message": "OPNsense host not configured"}
     try:
@@ -111,7 +118,8 @@ def detect_opnsense_api(user: str = Depends(require_user)) -> dict:
         return {"ok": False, "message": str(exc)}
     webgui = parse_webgui(contents)
     update_opnsense_settings(
-        {"opnsense_api_scheme": webgui["protocol"], "opnsense_api_port": webgui["port"]}
+        {"opnsense_api_scheme": webgui["protocol"], "opnsense_api_port": webgui["port"]},
+        instance_id=instance,
     )
     return {
         "ok": True,
@@ -122,8 +130,8 @@ def detect_opnsense_api(user: str = Depends(require_user)) -> dict:
 
 
 @router.post("/opnsense/api-test")
-def test_opnsense_api(user: str = Depends(require_user)) -> dict:
-    cfg = get_opnsense_settings(mask_password=False)
+def test_opnsense_api(instance: str | None = InstanceId, user: str = Depends(require_user)) -> dict:
+    cfg = get_opnsense_settings(mask_password=False, instance_id=instance)
     if not cfg.get("opnsense_host"):
         return {"ok": False, "message": "OPNsense host not configured"}
     api = OPNsenseAPI(

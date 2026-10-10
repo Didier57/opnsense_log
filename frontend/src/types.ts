@@ -158,3 +158,13 @@ export interface FilterlogImportStatus {
   skipped: number;
   inserted: number;
 }
+
+export interface Instance {
+  id: string;
+  name: string;
+  enabled: boolean;
+  position: number;
+  syslog_port: number | null;
+  syslog_protocol: string | null;
+  created_at: string | null;
+}

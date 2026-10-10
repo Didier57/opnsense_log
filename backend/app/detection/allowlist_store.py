@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ipaddress
 
+from ..instances import resolve_instance_id
 from ..storage.database import get_database
 from .blocking_store import get_blocking_settings, update_blocking_settings
 
@@ -27,14 +28,14 @@ def _normalize(token: str) -> str | None:
         return None
 
 
-def list_allowlist() -> list[dict]:
-    rows = get_database().execute_read(
+def list_allowlist(instance_id: str | None = None) -> list[dict]:
+    rows = get_database(resolve_instance_id(instance_id)).execute_read(
         'SELECT "ip", "note", "added_at" FROM allowlist_ips ORDER BY "added_at" DESC'
     ).fetchall()
     return [{"ip": r[0], "note": r[1] or "", "added_at": r[2]} for r in rows]
 
 
-def add_allowlist(entries: list[str], note: str = "") -> list[str]:
+def add_allowlist(entries: list[str], note: str = "", instance_id: str | None = None) -> list[str]:
     """Validate and store entries (IP or CIDR). Returns the added tokens."""
     tokens: list[str] = []
     for entry in entries or []:
@@ -43,7 +44,7 @@ def add_allowlist(entries: list[str], note: str = "") -> list[str]:
             tokens.append(norm)
     if not tokens:
         return []
-    db = get_database()
+    db = get_database(resolve_instance_id(instance_id))
     note = str(note or "")
     for ip in tokens:
         db.execute_write(
@@ -54,7 +55,7 @@ def add_allowlist(entries: list[str], note: str = "") -> list[str]:
     return tokens
 
 
-def remove_allowlist(entries: list[str]) -> list[str]:
+def remove_allowlist(entries: list[str], instance_id: str | None = None) -> list[str]:
     """Remove entries. Returns the tokens that were targeted (best effort)."""
     targets: list[str] = []
     for entry in entries or []:
@@ -64,13 +65,17 @@ def remove_allowlist(entries: list[str]) -> list[str]:
     if not targets:
         return []
     marks = ", ".join("?" for _ in targets)
-    get_database().execute_write(f'DELETE FROM allowlist_ips WHERE "ip" IN ({marks})', targets)
+    get_database(resolve_instance_id(instance_id)).execute_write(
+        f'DELETE FROM allowlist_ips WHERE "ip" IN ({marks})', targets
+    )
     return targets
 
 
-def allowlist_nets() -> list:
+def allowlist_nets(instance_id: str | None = None) -> list:
     """Every allowlist entry as an ``ip_network`` (invalid rows skipped)."""
-    rows = get_database().execute_read('SELECT "ip" FROM allowlist_ips').fetchall()
+    rows = get_database(resolve_instance_id(instance_id)).execute_read(
+        'SELECT "ip" FROM allowlist_ips'
+    ).fetchall()
     nets = []
     for row in rows:
         try:
@@ -80,15 +85,15 @@ def allowlist_nets() -> list:
     return nets
 
 
-def is_allowlisted(ip: str) -> bool:
+def is_allowlisted(ip: str, instance_id: str | None = None) -> bool:
     try:
         addr = ipaddress.ip_address(str(ip))
     except ValueError:
         return False
-    return any(addr in net for net in allowlist_nets())
+    return any(addr in net for net in allowlist_nets(instance_id))
 
 
-def migrate_legacy_whitelist() -> list[str]:
+def migrate_legacy_whitelist(instance_id: str | None = None) -> list[str]:
     """Import the legacy ``blocking_whitelist`` text into the managed allowlist.
 
     Runs once: valid IP/CIDR tokens are added to ``allowlist_ips`` and the
@@ -96,15 +101,15 @@ def migrate_legacy_whitelist() -> list[str]:
     tokens that were imported.
     """
     try:
-        legacy = str(get_blocking_settings().get("blocking_whitelist") or "").strip()
+        legacy = str(get_blocking_settings(instance_id).get("blocking_whitelist") or "").strip()
     except Exception:  # noqa: BLE001 - migration must never break startup
         return []
     if not legacy:
         return []
     tokens = legacy.replace(",", " ").split()
-    added = add_allowlist(tokens, note="importé de l'ancienne liste blanche")
+    added = add_allowlist(tokens, note="importé de l'ancienne liste blanche", instance_id=instance_id)
     try:
-        update_blocking_settings({"blocking_whitelist": ""})
+        update_blocking_settings({"blocking_whitelist": ""}, instance_id=instance_id)
     except Exception:  # noqa: BLE001
         pass
     return added

@@ -10,7 +10,7 @@ from app.storage.database import Database
 @pytest.fixture
 def db(tmp_path, monkeypatch):
     database = Database(str(tmp_path / "a.duckdb"))
-    monkeypatch.setattr(als, "get_database", lambda: database)
+    monkeypatch.setattr(als, "get_database", lambda *a, **k: database)
     yield database
     database.close()
 
@@ -47,9 +47,13 @@ def test_is_allowlisted_membership(db):
 def test_migrate_legacy_whitelist(db, monkeypatch):
     written: dict = {}
     monkeypatch.setattr(
-        als, "get_blocking_settings", lambda: {"blocking_whitelist": "192.168.1.10, 10.0.0.0/8 bad"}
+        als,
+        "get_blocking_settings",
+        lambda *a, **k: {"blocking_whitelist": "192.168.1.10, 10.0.0.0/8 bad"},
     )
-    monkeypatch.setattr(als, "update_blocking_settings", lambda payload: written.update(payload))
+    monkeypatch.setattr(
+        als, "update_blocking_settings", lambda payload, *a, **k: written.update(payload)
+    )
 
     added = als.migrate_legacy_whitelist()
     assert "192.168.1.10" in added
@@ -60,6 +64,6 @@ def test_migrate_legacy_whitelist(db, monkeypatch):
 
 
 def test_migrate_legacy_whitelist_noop_when_empty(db, monkeypatch):
-    monkeypatch.setattr(als, "get_blocking_settings", lambda: {"blocking_whitelist": ""})
-    monkeypatch.setattr(als, "update_blocking_settings", lambda payload: None)
+    monkeypatch.setattr(als, "get_blocking_settings", lambda *a, **k: {"blocking_whitelist": ""})
+    monkeypatch.setattr(als, "update_blocking_settings", lambda payload, *a, **k: None)
     assert als.migrate_legacy_whitelist() == []

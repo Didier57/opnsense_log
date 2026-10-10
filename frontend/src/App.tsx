@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { useAuth } from "./auth";
+import { useInstance } from "./instance";
+import { Instances } from "./pages/Instances";
 import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard/Dashboard";
 import { Live } from "./pages/Live/Live";
@@ -21,6 +23,7 @@ import { SystemLogs } from "./pages/System/SystemLogs";
 
 export function App() {
   const { authEnabled, username, ready } = useAuth();
+  const { instance } = useInstance();
 
   return (
     <Routes>
@@ -34,6 +37,7 @@ export function App() {
             <Navigate to="/login" replace />
           ) : (
             <Layout>
+              <div key={instance?.id ?? "none"}>
               <Routes>
                 <Route index element={<Dashboard />} />
                 <Route path="live" element={<Live />} />
@@ -52,8 +56,10 @@ export function App() {
                 <Route path="settings/opnsense" element={<OpnsenseSettings />} />
                 <Route path="system" element={<SystemStatus />} />
                 <Route path="system/logs" element={<SystemLogs />} />
+                <Route path="instances" element={<Instances />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
+              </div>
             </Layout>
           )
         }

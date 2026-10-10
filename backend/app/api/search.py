@@ -5,22 +5,26 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..geoip.resolver import geo_resolver
 from ..storage.repository import EventRepository
-from .deps import require_user
+from .deps import InstanceId, require_user
 from .schemas import SearchRequest
 
 router = APIRouter(prefix="/api/search", tags=["search"])
-repo = EventRepository()
 
 
 @router.post("")
-def search(payload: SearchRequest, user: str = Depends(require_user)) -> dict:
+def search(
+    payload: SearchRequest,
+    instance: str | None = InstanceId,
+    user: str = Depends(require_user),
+) -> dict:
+    repo = EventRepository(instance_id=instance)
     clauses = [c.model_dump() for c in payload.clauses]
     country_ips: list[str] | None = None
     if payload.countries:
         wanted = {code.strip().upper() for code in payload.countries if code.strip()}
         candidates = set(repo.distinct_ips("src_ip", payload.start, payload.end))
         candidates.update(repo.distinct_ips("dst_ip", payload.start, payload.end))
-        resolved = geo_resolver.resolve(list(candidates))
+        resolved = geo_resolver.resolve(list(candidates), instance_id=instance)
         country_ips = [
             ip
             for ip, info in resolved.items()

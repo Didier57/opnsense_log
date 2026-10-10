@@ -6,16 +6,19 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from ..instances import resolve_instance_id
 from ..storage.database import get_database
-from .deps import require_user
+from .deps import InstanceId, require_user
 from .schemas import SavedFilterCreate
 
 router = APIRouter(prefix="/api/filters", tags=["filters"])
 
 
 @router.get("")
-def list_filters(user: str = Depends(require_user)) -> dict:
-    db = get_database()
+def list_filters(
+    instance: str | None = InstanceId, user: str = Depends(require_user)
+) -> dict:
+    db = get_database(resolve_instance_id(instance))
     rows = db.execute_read(
         "SELECT id, name, definition, created_at FROM saved_filters ORDER BY name"
     ).fetchall()
@@ -27,8 +30,12 @@ def list_filters(user: str = Depends(require_user)) -> dict:
 
 
 @router.post("")
-def create_filter(payload: SavedFilterCreate, user: str = Depends(require_user)) -> dict:
-    db = get_database()
+def create_filter(
+    payload: SavedFilterCreate,
+    instance: str | None = InstanceId,
+    user: str = Depends(require_user),
+) -> dict:
+    db = get_database(resolve_instance_id(instance))
     next_id = (db.execute_read("SELECT COALESCE(MAX(id), 0) + 1 FROM saved_filters").fetchone()[0])
     db.execute_write(
         "INSERT INTO saved_filters (id, name, definition, created_at) VALUES (?, ?, ?, ?)",
@@ -38,15 +45,19 @@ def create_filter(payload: SavedFilterCreate, user: str = Depends(require_user))
 
 
 @router.delete("/{filter_id}")
-def delete_filter(filter_id: int, user: str = Depends(require_user)) -> dict:
-    db = get_database()
+def delete_filter(
+    filter_id: int, instance: str | None = InstanceId, user: str = Depends(require_user)
+) -> dict:
+    db = get_database(resolve_instance_id(instance))
     db.execute_write("DELETE FROM saved_filters WHERE id = ?", [filter_id])
     return {"ok": True}
 
 
 @router.get("/{filter_id}")
-def get_filter(filter_id: int, user: str = Depends(require_user)) -> dict:
-    db = get_database()
+def get_filter(
+    filter_id: int, instance: str | None = InstanceId, user: str = Depends(require_user)
+) -> dict:
+    db = get_database(resolve_instance_id(instance))
     row = db.execute_read(
         "SELECT id, name, definition, created_at FROM saved_filters WHERE id = ?", [filter_id]
     ).fetchone()

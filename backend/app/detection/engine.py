@@ -12,10 +12,12 @@ import html as html_lib
 import ipaddress
 import json
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from ..config import settings
+from ..instances import resolve_instance_id
 from ..notifications.mailer import send_email
 from ..notifications.store import get_smtp_settings
 from ..storage.database import get_database
@@ -29,11 +31,11 @@ _MAX_PER_RULE = 25
 # first detection cycle, so a restart does not re-notify about a backlog the
 # previous run already reported.
 _STARTED_AT = datetime.now(timezone.utc)
-_first_cycle = True
+_first_cycle: set[str] = set()
 
 
-def _rows(sql: str, params: list) -> list[tuple]:
-    return get_database().execute_read(sql, params).fetchall()
+def _rows(sql: str, params: list, instance_id: str | None = None) -> list[tuple]:
+    return get_database(resolve_instance_id(instance_id)).execute_read(sql, params).fetchall()
 
 
 def _is_internal(ip: str) -> bool:
@@ -72,7 +74,7 @@ def _window_start(window: int, floor: datetime | None) -> datetime:
     return cutoff
 
 
-def _block_labels(src_ips: list[str], cutoff: datetime) -> dict[str, str]:
+def _block_labels(src_ips: list[str], cutoff: datetime, instance_id: str | None = None) -> dict[str, str]:
     """Map each source IP to the label of the rule that most often blocked it.
 
     The firewall rule description is joined from ``opnsense_rules``; the raw rule
@@ -89,6 +91,7 @@ def _block_labels(src_ips: list[str], cutoff: datetime) -> dict[str, str]:
         f"AND e.\"rule_id\" <> '' AND e.\"src_ip\" IN ({marks}) "
         "GROUP BY 1, 2 ORDER BY 1, 3 DESC",
         [cutoff, *ips],
+        instance_id,
     )
     labels: dict[str, str] = {}
     for src_ip, rule_id, _count, description in rows:
@@ -153,7 +156,7 @@ def _port_filter(cfg: dict, params: list) -> str:
     return f' AND ("dst_port" IS NULL OR "dst_port" NOT IN ({placeholders}))'
 
 
-def _detect_port_scan(cfg: dict, floor: datetime | None = None, allow_nets: list | None = None) -> list[dict]:
+def _detect_port_scan(cfg: dict, floor: datetime | None = None, allow_nets: list | None = None, instance_id: str | None = None) -> list[dict]:
     window = cfg["detection_portscan_window_sec"]
     cutoff = _window_start(window, floor)
     rows = _rows(
@@ -167,9 +170,10 @@ def _detect_port_scan(cfg: dict, floor: datetime | None = None, allow_nets: list
         LIMIT ?
         """,
         [cutoff, cfg["detection_portscan_ports"], _MAX_PER_RULE],
+        instance_id,
     )
     bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
-    labels = _block_labels([r[0] for r in rows], cutoff)
+    labels = _block_labels([r[0] for r in rows], cutoff, instance_id)
     alerts = []
     for src_ip, ports, last_seen in rows:
         if _skip_source(cfg, src_ip, allow_nets):
@@ -194,7 +198,7 @@ def _detect_port_scan(cfg: dict, floor: datetime | None = None, allow_nets: list
     return alerts
 
 
-def _detect_bruteforce(cfg: dict, floor: datetime | None = None, allow_nets: list | None = None) -> list[dict]:
+def _detect_bruteforce(cfg: dict, floor: datetime | None = None, allow_nets: list | None = None, instance_id: str | None = None) -> list[dict]:
     window = cfg["detection_bruteforce_window_sec"]
     cutoff = _window_start(window, floor)
     params: list = [cutoff]
@@ -212,9 +216,10 @@ def _detect_bruteforce(cfg: dict, floor: datetime | None = None, allow_nets: lis
         LIMIT ?
         """,
         params,
+        instance_id,
     )
     bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
-    labels = _block_labels([r[0] for r in rows], cutoff)
+    labels = _block_labels([r[0] for r in rows], cutoff, instance_id)
     alerts = []
     for src_ip, attempts, last_seen in rows:
         if _skip_source(cfg, src_ip, allow_nets):
@@ -239,7 +244,7 @@ def _detect_bruteforce(cfg: dict, floor: datetime | None = None, allow_nets: lis
     return alerts
 
 
-def _detect_bruteforce_service(cfg: dict, floor: datetime | None = None, allow_nets: list | None = None) -> list[dict]:
+def _detect_bruteforce_service(cfg: dict, floor: datetime | None = None, allow_nets: list | None = None, instance_id: str | None = None) -> list[dict]:
     """Repeated blocks against the same destination port (service brute-force)."""
     window = cfg["detection_bruteforce_window_sec"]
     cutoff = _window_start(window, floor)
@@ -258,9 +263,10 @@ def _detect_bruteforce_service(cfg: dict, floor: datetime | None = None, allow_n
         LIMIT ?
         """,
         params,
+        instance_id,
     )
     bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
-    labels = _block_labels([r[0] for r in rows], cutoff)
+    labels = _block_labels([r[0] for r in rows], cutoff, instance_id)
     alerts = []
     for src_ip, dst_port, attempts, last_seen in rows:
         if _skip_source(cfg, src_ip, allow_nets):
@@ -286,7 +292,7 @@ def _detect_bruteforce_service(cfg: dict, floor: datetime | None = None, allow_n
     return alerts
 
 
-def _detect_horizontal_scan(cfg: dict, floor: datetime | None = None, allow_nets: list | None = None) -> list[dict]:
+def _detect_horizontal_scan(cfg: dict, floor: datetime | None = None, allow_nets: list | None = None, instance_id: str | None = None) -> list[dict]:
     """One source contacting many distinct destination hosts (network scan)."""
     window = cfg["detection_horizontalscan_window_sec"]
     cutoff = _window_start(window, floor)
@@ -301,9 +307,10 @@ def _detect_horizontal_scan(cfg: dict, floor: datetime | None = None, allow_nets
         LIMIT ?
         """,
         [cutoff, cfg["detection_horizontalscan_hosts"], _MAX_PER_RULE],
+        instance_id,
     )
     bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
-    labels = _block_labels([r[0] for r in rows], cutoff)
+    labels = _block_labels([r[0] for r in rows], cutoff, instance_id)
     alerts = []
     for src_ip, hosts, last_seen in rows:
         if _skip_source(cfg, src_ip, allow_nets):
@@ -328,12 +335,12 @@ def _detect_horizontal_scan(cfg: dict, floor: datetime | None = None, allow_nets
     return alerts
 
 
-def _detect_spike(cfg: dict, floor: datetime | None = None, allow_nets: list | None = None) -> list[dict]:
+def _detect_spike(cfg: dict, floor: datetime | None = None, allow_nets: list | None = None, instance_id: str | None = None) -> list[dict]:
     if not cfg.get("detection_spike_enabled", False):
         return []
     window = cfg["detection_spike_window_sec"]
     cutoff = _window_start(window, floor)
-    row = _rows('SELECT COUNT(*), MAX("event_time") FROM events WHERE "event_time" >= ?', [cutoff])[0]
+    row = _rows('SELECT COUNT(*), MAX("event_time") FROM events WHERE "event_time" >= ?', [cutoff], instance_id)[0]
     total, last_seen = row[0], row[1]
     if total < cfg["detection_spike_threshold"]:
         return []
@@ -352,16 +359,16 @@ def _detect_spike(cfg: dict, floor: datetime | None = None, allow_nets: list | N
     ]
 
 
-def _existing_ids(ids: list[str]) -> set[str]:
+def _existing_ids(ids: list[str], instance_id: str | None = None) -> set[str]:
     if not ids:
         return set()
     marks = ", ".join("?" for _ in ids)
-    rows = _rows(f'SELECT "id" FROM alerts WHERE "id" IN ({marks})', list(ids))
+    rows = _rows(f'SELECT "id" FROM alerts WHERE "id" IN ({marks})', list(ids), instance_id)
     return {r[0] for r in rows}
 
 
-def _store_alert(alert: dict) -> None:
-    get_database().execute_write(
+def _store_alert(alert: dict, instance_id: str | None = None) -> None:
+    get_database(resolve_instance_id(instance_id)).execute_write(
         'INSERT INTO alerts ("id", "created_at", "rule", "severity", "src_ip", "title", '
         '"message", "details", "notified") VALUES (?, now(), ?, ?, ?, ?, ?, ?, ?)',
         [
@@ -377,21 +384,24 @@ def _store_alert(alert: dict) -> None:
     )
 
 
-def run_cycle() -> list[dict]:
+def run_cycle(instance_id: str | None = None) -> list[dict]:
     """Run every detection rule once and persist new alerts. Returns the new ones."""
-    global _first_cycle
-    cfg = get_detection_settings()
+    cfg = get_detection_settings(instance_id)
     if not cfg["detection_enabled"]:
         return []
 
-    # On the first cycle after startup ignore pre-boot events.
-    floor = _STARTED_AT if _first_cycle else None
-    _first_cycle = False
+    # On the first cycle after startup ignore pre-boot events (per instance).
+    key = resolve_instance_id(instance_id) or ""
+    if key not in _first_cycle:
+        floor = _STARTED_AT
+        _first_cycle.add(key)
+    else:
+        floor = None
 
     try:
         from .allowlist_store import allowlist_nets
 
-        allow_nets = allowlist_nets()
+        allow_nets = allowlist_nets(instance_id)
     except Exception:  # noqa: BLE001 - allowlist must never break detection
         logger.exception("Could not load allowlist")
         allow_nets = []
@@ -405,15 +415,15 @@ def run_cycle() -> list[dict]:
         _detect_spike,
     ):
         try:
-            candidates.extend(detector(cfg, floor, allow_nets))
+            candidates.extend(detector(cfg, floor, allow_nets, instance_id))
         except Exception:  # noqa: BLE001
             logger.exception("Detection rule failed: %s", detector.__name__)
 
-    existing = _existing_ids([c["id"] for c in candidates])
+    existing = _existing_ids([c["id"] for c in candidates], instance_id)
     new_alerts = [c for c in candidates if c["id"] not in existing]
     for alert in new_alerts:
         try:
-            _store_alert(alert)
+            _store_alert(alert, instance_id)
         except Exception:  # noqa: BLE001
             logger.exception("Could not store alert %s", alert.get("id"))
 
@@ -422,37 +432,40 @@ def run_cycle() -> list[dict]:
         from ..opnsense.blocker import block_alerts, prune_expired
         from .blocking_store import get_blocking_settings
 
-        bcfg = get_blocking_settings()
+        bcfg = get_blocking_settings(instance_id)
         if bcfg.get("blocking_enabled") and bcfg.get("blocking_mode") == "auto" and new_alerts:
-            result = block_alerts(new_alerts)
+            result = block_alerts(new_alerts, instance_id)
             blocked_by_us = {ip for ip in (result.get("added") or []) if ip}
             if blocked_by_us:
                 logger.info("Auto-blocked %d IP(s): %s", len(blocked_by_us), sorted(blocked_by_us))
-        prune_expired()
+        prune_expired(instance_id)
     except Exception:  # noqa: BLE001
         logger.exception("Blocking step failed")
 
     if new_alerts:
         logger.info("Detection raised %d new alert(s)", len(new_alerts))
-        _notify(new_alerts, cfg, blocked_by_us)
+        _notify(new_alerts, cfg, blocked_by_us, instance_id)
 
     return new_alerts
 
 
-def _recently_notified(rule: str, src_ip: str, cutoff: datetime) -> bool:
+def _recently_notified(rule: str, src_ip: str, cutoff: datetime, instance_id: str | None = None) -> bool:
     rows = _rows(
         'SELECT 1 FROM alerts WHERE "rule" = ? AND "src_ip" = ? AND "notified" = TRUE '
         'AND "created_at" >= ? LIMIT 1',
         [rule, src_ip, cutoff],
+        instance_id,
     )
     return bool(rows)
 
 
-def _mark_notified(ids: list[str]) -> None:
+def _mark_notified(ids: list[str], instance_id: str | None = None) -> None:
     if not ids:
         return
     marks = ", ".join("?" for _ in ids)
-    get_database().execute_write(f'UPDATE alerts SET "notified" = TRUE WHERE "id" IN ({marks})', list(ids))
+    get_database(resolve_instance_id(instance_id)).execute_write(
+        f'UPDATE alerts SET "notified" = TRUE WHERE "id" IN ({marks})', list(ids)
+    )
 
 
 def _alerts_html(alerts: list[dict]) -> str:
@@ -506,7 +519,7 @@ def _alerts_html(alerts: list[dict]) -> str:
     )
 
 
-def _notify(alerts: list[dict], cfg: dict, blocked_by_us: set[str] | None = None) -> None:
+def _notify(alerts: list[dict], cfg: dict, blocked_by_us: set[str] | None = None, instance_id: str | None = None) -> None:
     # Skip alerts already covered by a block e-mail (the app just blocked the IP)
     # or handled by another plugin (the blocking rule is not our own alias), so
     # the alert digest never duplicates a blocking notification.
@@ -514,7 +527,7 @@ def _notify(alerts: list[dict], cfg: dict, blocked_by_us: set[str] | None = None
     try:
         from .blocking_store import get_blocking_settings
 
-        own_alias = str(get_blocking_settings().get("blocking_alias") or "").strip().lower()
+        own_alias = str(get_blocking_settings(instance_id).get("blocking_alias") or "").strip().lower()
     except Exception:  # noqa: BLE001
         own_alias = ""
 
@@ -541,7 +554,7 @@ def _notify(alerts: list[dict], cfg: dict, blocked_by_us: set[str] | None = None
     to_send = alerts
     if cooldown_min > 0:
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=cooldown_min)
-        to_send = [a for a in alerts if not _recently_notified(a["rule"], a["src_ip"], cutoff)]
+        to_send = [a for a in alerts if not _recently_notified(a["rule"], a["src_ip"], cutoff, instance_id)]
         if not to_send:
             logger.info("E-mail notification suppressed by cooldown (%d alert(s))", len(alerts))
             return
@@ -554,21 +567,22 @@ def _notify(alerts: list[dict], cfg: dict, blocked_by_us: set[str] | None = None
     result = send_email(subject, body, smtp, html=_alerts_html(to_send))
     if result.get("ok"):
         try:
-            _mark_notified([a["id"] for a in to_send])
+            _mark_notified([a["id"] for a in to_send], instance_id)
         except Exception:  # noqa: BLE001
             logger.exception("Could not mark alerts as notified")
     else:
         logger.warning("Alert e-mail not sent: %s", result.get("message"))
 
 
-def list_alerts(limit: int = 200, offset: int = 0) -> dict:
+def list_alerts(limit: int = 200, offset: int = 0, instance_id: str | None = None) -> dict:
     limit = max(1, min(limit, 1000))
     offset = max(0, offset)
-    total = _rows("SELECT COUNT(*) FROM alerts", [])[0][0]
+    total = _rows("SELECT COUNT(*) FROM alerts", [], instance_id)[0][0]
     rows = _rows(
         'SELECT "id", "created_at", "rule", "severity", "src_ip", "title", "message", "details" '
         'FROM alerts ORDER BY "created_at" DESC LIMIT ? OFFSET ?',
         [limit, offset],
+        instance_id,
     )
     items = []
     for row in rows:
@@ -593,27 +607,40 @@ def list_alerts(limit: int = 200, offset: int = 0) -> dict:
     return {"total": total, "limit": limit, "offset": offset, "items": items}
 
 
-def count_alerts() -> int:
-    return _rows("SELECT COUNT(*) FROM alerts", [])[0][0]
+def count_alerts(instance_id: str | None = None) -> int:
+    return _rows("SELECT COUNT(*) FROM alerts", [], instance_id)[0][0]
 
 
-def clear_alerts() -> int:
-    result = get_database().execute_write("DELETE FROM alerts RETURNING 1")
+def clear_alerts(instance_id: str | None = None) -> int:
+    result = get_database(resolve_instance_id(instance_id)).execute_write("DELETE FROM alerts RETURNING 1")
     return len(result.fetchall())
 
 
 async def detection_loop() -> None:
-    """Periodically run the detection engine off the event loop."""
+    """Periodically run the detection engine for every instance, off the loop."""
+    from ..instances import list_instances
+
+    last: dict[str, float] = {}
     while True:
-        interval = 60
         try:
-            cfg = get_detection_settings()
-            if cfg["detection_enabled"]:
-                interval = max(15, cfg["detection_interval_sec"])
-                await asyncio.to_thread(run_cycle)
-            else:
-                interval = 30
+            try:
+                instances = list_instances()
+            except Exception:  # noqa: BLE001
+                instances = []
+            now = time.monotonic()
+            for inst in instances:
+                iid = inst["id"]
+                cfg = get_detection_settings(iid)
+                if not cfg.get("detection_enabled"):
+                    continue
+                interval = max(15, int(cfg.get("detection_interval_sec") or 60))
+                if now - last.get(iid, 0.0) < interval:
+                    continue
+                last[iid] = now
+                try:
+                    await asyncio.to_thread(run_cycle, iid)
+                except Exception:  # noqa: BLE001
+                    logger.exception("Detection cycle failed for %s", iid)
         except Exception:  # noqa: BLE001
             logger.exception("Detection loop error")
-            interval = 60
-        await asyncio.sleep(interval)
+        await asyncio.sleep(15)

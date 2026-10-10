@@ -36,11 +36,11 @@ def _fmt_dt(value) -> str:
         return str(value)
 
 
-def _unblock_url(ip: str, days: int) -> str:
+def _unblock_url(ip: str, days: int, instance_id: str | None = None) -> str:
     base = get_public_url()
     if not base:
         return ""
-    return f"{base}/api/blocking/unblock?token={create_unblock_token(ip, days)}"
+    return f"{base}/api/blocking/unblock?token={create_unblock_token(ip, days, instance_id=instance_id)}"
 
 
 def _html_page(rows: list[dict], rule_label: str) -> str:
@@ -95,6 +95,7 @@ def send_block_notification(
     reasons: dict | None = None,
     days: int = 7,
     details: dict | None = None,
+    instance_id: str | None = None,
 ) -> dict:
     """Send a single e-mail listing the blocked IPs (one unblock button each)."""
     targets = [str(ip or "").strip() for ip in ips if str(ip or "").strip()]
@@ -109,7 +110,7 @@ def send_block_notification(
     lines: list[str] = []
     for ip in targets:
         reason = str(reasons.get(ip) or default_reason)
-        url = _unblock_url(ip, days)
+        url = _unblock_url(ip, days, instance_id=instance_id)
         info = details.get(ip) or {}
         hits = info.get("hits")
         expires = _fmt_dt(info.get("expires_at"))

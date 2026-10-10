@@ -6,6 +6,7 @@ them and survive container restarts (they live in the mounted data volume).
 from __future__ import annotations
 
 from ..config import settings
+from ..instances import resolve_instance_id
 from ..storage.database import get_database
 
 # Keys here match the application Settings field names (and therefore the
@@ -35,8 +36,8 @@ def _as_bool(value: object) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
-def get_opnsense_settings(mask_password: bool = True) -> dict:
-    db = get_database()
+def get_opnsense_settings(mask_password: bool = True, instance_id: str | None = None) -> dict:
+    db = get_database(resolve_instance_id(instance_id))
     overrides: dict[str, str] = {}
     try:
         rows = db.execute_read('SELECT "key", "value" FROM app_settings').fetchall()
@@ -73,8 +74,8 @@ def get_opnsense_settings(mask_password: bool = True) -> dict:
     return result
 
 
-def update_opnsense_settings(payload: dict) -> dict:
-    db = get_database()
+def update_opnsense_settings(payload: dict, instance_id: str | None = None) -> dict:
+    db = get_database(resolve_instance_id(instance_id))
     for key in _KEYS:
         if key in payload and payload[key] is not None:
             value = payload[key]
@@ -85,4 +86,4 @@ def update_opnsense_settings(payload: dict) -> dict:
                 'ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value", "updated_at" = excluded."updated_at"',
                 [key, str(value)],
             )
-    return get_opnsense_settings()
+    return get_opnsense_settings(instance_id=instance_id)

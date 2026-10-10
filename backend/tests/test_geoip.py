@@ -12,8 +12,8 @@ from app.opnsense.config_loader import parse_geoip_credentials
 @pytest.fixture()
 def database(tmp_path, monkeypatch):
     db = Database(str(tmp_path / "geo.duckdb"))
-    monkeypatch.setattr(gr, "get_database", lambda: db)
-    monkeypatch.setattr("app.storage.database.get_database", lambda: db)
+    monkeypatch.setattr(gr, "get_database", lambda *a, **k: db)
+    monkeypatch.setattr("app.storage.database.get_database", lambda *a, **k: db)
     yield db
     db.close()
 

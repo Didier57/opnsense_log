@@ -2,6 +2,7 @@ import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 import { useAuth } from "../auth";
+import { useInstance } from "../instance";
 
 const NAV: { group: string; links: { to: string; label: string }[] }[] = [
   { group: "", links: [{ to: "/", label: "Tableau de bord" }] },
@@ -44,6 +45,7 @@ const NAV: { group: string; links: { to: string; label: string }[] }[] = [
     group: "Paramètres",
     links: [
       { to: "/settings", label: "Application" },
+      { to: "/instances", label: "Instances" },
       { to: "/settings/notifications", label: "Notifications" },
       { to: "/settings/geoip", label: "Géolocalisation" },
       { to: "/settings/opnsense", label: "OPNsense" },
@@ -54,6 +56,7 @@ const NAV: { group: string; links: { to: string; label: string }[] }[] = [
 
 export function Layout({ children }: { children: ReactNode }) {
   const { username, logout } = useAuth();
+  const { instances, instance, selectInstance } = useInstance();
   const navigate = useNavigate();
   // Sections start collapsed; the user expands the ones they need.
   const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -106,6 +109,22 @@ export function Layout({ children }: { children: ReactNode }) {
       <main className="main">
         <div className="topbar">
           <div />
+          <div className="instance-switch">
+            <span className="muted">OPNsense :</span>
+            <select
+              value={instance?.id ?? ""}
+              onChange={(e) => selectInstance(e.target.value)}
+              disabled={instances.length === 0}
+            >
+              {instances.length === 0 && <option value="">—</option>}
+              {instances.map((inst) => (
+                <option key={inst.id} value={inst.id}>
+                  {inst.name}
+                  {inst.enabled ? "" : " (désactivée)"}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="muted">
             {username ? (
               <>

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from ..config import settings
+from ..instances import resolve_instance_id
 from ..storage.database import get_database
 
 _STR_KEYS = [
@@ -30,16 +31,20 @@ def _as_int(value: object, default: int, minimum: int) -> int:
         return default
 
 
-def _overrides() -> dict[str, str]:
+def _overrides(instance_id: str | None = None) -> dict[str, str]:
     try:
-        rows = get_database().execute_read('SELECT "key", "value" FROM app_settings').fetchall()
+        rows = (
+            get_database(resolve_instance_id(instance_id))
+            .execute_read('SELECT "key", "value" FROM app_settings')
+            .fetchall()
+        )
         return {r[0]: r[1] for r in rows}
     except Exception:  # noqa: BLE001
         return {}
 
 
-def get_blocking_settings() -> dict:
-    overrides = _overrides()
+def get_blocking_settings(instance_id: str | None = None) -> dict:
+    overrides = _overrides(instance_id)
 
     def value(key: str):
         return overrides.get(key, getattr(settings, key))
@@ -54,8 +59,8 @@ def get_blocking_settings() -> dict:
     return result
 
 
-def update_blocking_settings(payload: dict) -> dict:
-    db = get_database()
+def update_blocking_settings(payload: dict, instance_id: str | None = None) -> dict:
+    db = get_database(resolve_instance_id(instance_id))
     for key in _KEYS:
         if key in payload and payload[key] is not None:
             value = payload[key]
@@ -66,17 +71,17 @@ def update_blocking_settings(payload: dict) -> dict:
                 'ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value", "updated_at" = excluded."updated_at"',
                 [key, str(value)],
             )
-    return get_blocking_settings()
+    return get_blocking_settings(instance_id=instance_id)
 
 
-def set_detected_skip_tables(names: list[str]) -> list[str]:
+def set_detected_skip_tables(names: list[str], instance_id: str | None = None) -> list[str]:
     """Persist the pf tables auto-detected on the firewall (not user-editable)."""
     clean: list[str] = []
     for name in names:
         name = str(name or "").strip()
         if name and name not in clean:
             clean.append(name)
-    get_database().execute_write(
+    get_database(resolve_instance_id(instance_id)).execute_write(
         'INSERT INTO app_settings ("key", "value", "updated_at") VALUES (?, ?, now()) '
         'ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value", "updated_at" = excluded."updated_at"',
         ["blocking_skip_tables_detected", ", ".join(clean)],

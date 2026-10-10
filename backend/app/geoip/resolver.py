@@ -26,6 +26,7 @@ from zoneinfo import ZoneInfo
 import maxminddb
 
 from ..config import settings
+from ..instances import resolve_instance_id
 from ..storage.database import get_database
 from .store import get_geo_settings
 
@@ -130,13 +131,13 @@ class GeoResolver:
         return code, name or code
 
     # ------------------------------------------------------------------ cache
-    def _db_lookup(self, ips: list[str]) -> dict[str, tuple[str, str]]:
+    def _db_lookup(self, ips: list[str], instance_id: str | None = None) -> dict[str, tuple[str, str]]:
         if not ips:
             return {}
         placeholders = ", ".join("?" for _ in ips)
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=_POSITIVE_TTL)
         try:
-            rows = get_database().execute_read(
+            rows = get_database(resolve_instance_id(instance_id)).execute_read(
                 'SELECT "ip", "country", "country_name" FROM geoip_cache '
                 f'WHERE "ip" IN ({placeholders}) AND "updated_at" >= ?',
                 [*ips, cutoff],
@@ -145,11 +146,11 @@ class GeoResolver:
             return {}
         return {ip: (country, name) for ip, country, name in rows if country}
 
-    def _db_store(self, mapping: dict[str, tuple[str, str]]) -> None:
+    def _db_store(self, mapping: dict[str, tuple[str, str]], instance_id: str | None = None) -> None:
         if not mapping:
             return
         try:
-            get_database().executemany_write(
+            get_database(resolve_instance_id(instance_id)).executemany_write(
                 'INSERT INTO geoip_cache ("ip", "country", "country_name", "updated_at") '
                 "VALUES (?, ?, ?, now()) "
                 'ON CONFLICT ("ip") DO UPDATE SET "country" = excluded."country", '
@@ -160,7 +161,7 @@ class GeoResolver:
             pass
 
     # ------------------------------------------------------------------ lookup
-    def resolve(self, ips: list[str]) -> dict[str, dict | None]:
+    def resolve(self, ips: list[str], instance_id: str | None = None) -> dict[str, dict | None]:
         unique: list[str] = []
         seen: set[str] = set()
         for raw in ips:
@@ -187,7 +188,7 @@ class GeoResolver:
             return result
 
         found: dict[str, tuple[str, str]] = {}
-        db_hits = self._db_lookup(missing)
+        db_hits = self._db_lookup(missing, instance_id)
         with self._lock:
             for ip in missing:
                 if ip in db_hits:
@@ -203,7 +204,7 @@ class GeoResolver:
                 else:
                     result[ip] = None
                     self._mem[ip] = _Entry(None, None, now + _NEGATIVE_TTL)
-        self._db_store(found)
+        self._db_store(found, instance_id)
         return result
 
     # ------------------------------------------------------------------ status

@@ -39,9 +39,9 @@ class FakeAPI:
 @pytest.fixture
 def database(tmp_path, monkeypatch):
     db = Database(str(tmp_path / "t.duckdb"))
-    monkeypatch.setattr(bs, "get_database", lambda: db)
-    monkeypatch.setattr(blocker, "get_database", lambda: db)
-    monkeypatch.setattr(als, "get_database", lambda: db)
+    monkeypatch.setattr(bs, "get_database", lambda *a, **k: db)
+    monkeypatch.setattr(blocker, "get_database", lambda *a, **k: db)
+    monkeypatch.setattr(als, "get_database", lambda *a, **k: db)
     yield db
     db.close()
 
@@ -72,9 +72,9 @@ def test_blocking_settings_update(database):
 
 
 def test_apply_ips_filters_and_creates_alias(database, monkeypatch):
-    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg(blocking_whitelist="10.0.0.1"))
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg(blocking_whitelist="10.0.0.1"))
     fake = FakeAPI()
-    monkeypatch.setattr(blocker, "_api", lambda: fake)
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
 
     result = blocker.apply_ips(["1.2.3.4", "10.0.0.1", "192.168.1.5", "1.2.3.4", "bad"])
     assert result["ok"] is True
@@ -85,9 +85,9 @@ def test_apply_ips_filters_and_creates_alias(database, monkeypatch):
 
 
 def test_apply_ips_merges_existing(database, monkeypatch):
-    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg())
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg())
     fake = FakeAPI({"BLOCK": {"uuid": "u1", "name": "BLOCK", "type": "host", "enabled": "1", "content": ["1.2.3.4"]}})
-    monkeypatch.setattr(blocker, "_api", lambda: fake)
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
 
     result = blocker.apply_ips(["1.2.3.4", "5.6.7.8"])
     assert result["added"] == ["5.6.7.8"]
@@ -122,11 +122,11 @@ def test_detect_block_tables_filters_names(monkeypatch):
     monkeypatch.setattr(
         blocker,
         "get_opnsense_settings",
-        lambda mask_password=False: {"opnsense_host": "h", "opnsense_ssh_port": 22,
+            lambda mask_password=False, *a, **k: {"opnsense_host": "h", "opnsense_ssh_port": 22,
                                      "opnsense_username": "root", "opnsense_auth_type": "password",
                                      "opnsense_key_path": ""},
     )
-    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg(blocking_alias="BLOCK_IP"))
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg(blocking_alias="BLOCK_IP"))
     tables = blocker.detect_block_tables()
     assert "crowdsec_blacklists" in tables
     assert "qfeeds4" in tables
@@ -136,9 +136,9 @@ def test_detect_block_tables_filters_names(monkeypatch):
 
 
 def test_apply_ips_dry_run_does_not_touch_alias(database, monkeypatch):
-    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg(blocking_dry_run=True))
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg(blocking_dry_run=True))
     fake = FakeAPI()
-    monkeypatch.setattr(blocker, "_api", lambda: fake)
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
 
     result = blocker.apply_ips(["1.2.3.4"])
     assert result["dry_run"] is True
@@ -149,9 +149,9 @@ def test_apply_ips_dry_run_does_not_touch_alias(database, monkeypatch):
 
 
 def test_apply_ips_respects_allowlist(database, monkeypatch):
-    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg())
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg())
     fake = FakeAPI()
-    monkeypatch.setattr(blocker, "_api", lambda: fake)
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
     als.add_allowlist(["203.0.113.0/24"])
 
     result = blocker.apply_ips(["203.0.113.5", "1.2.3.4"])
@@ -190,9 +190,9 @@ def test_record_blocked_escalation_capped(database):
 
 
 def test_reconcile_alias_readds_missing(database, monkeypatch):
-    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg(blocking_enabled=True))
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg(blocking_enabled=True))
     fake = FakeAPI({"BLOCK": {"uuid": "u1", "name": "BLOCK", "type": "host", "enabled": "1", "content": ["5.6.7.8"]}})
-    monkeypatch.setattr(blocker, "_api", lambda: fake)
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
     database.execute_write(
         'INSERT INTO blocked_ips ("ip", "rule", "source", "added_at", "expires_at", "hits") '
         "VALUES ('1.2.3.4', 'detection', 'auto', now(), NULL, 1)"
@@ -206,9 +206,9 @@ def test_reconcile_alias_readds_missing(database, monkeypatch):
 
 
 def test_reconcile_alias_disabled_is_noop(database, monkeypatch):
-    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg(blocking_enabled=False))
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg(blocking_enabled=False))
     fake = FakeAPI()
-    monkeypatch.setattr(blocker, "_api", lambda: fake)
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
     result = blocker.reconcile_alias()
     assert result == {"ok": True, "reconciled": 0}
     assert fake.rows == {}
@@ -216,11 +216,11 @@ def test_reconcile_alias_disabled_is_noop(database, monkeypatch):
 
 def test_apply_ips_skips_already_blocked(database, monkeypatch):
     monkeypatch.setattr(
-        blocker, "get_blocking_settings", lambda: _cfg(blocking_skip_tables="crowdsec_blacklists")
+        blocker, "get_blocking_settings", lambda *a, **k: _cfg(blocking_skip_tables="crowdsec_blacklists")
     )
     fake = FakeAPI()
-    monkeypatch.setattr(blocker, "_api", lambda: fake)
-    monkeypatch.setattr(blocker, "_already_blocked", lambda ips, tables: {"1.2.3.4"})
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
+    monkeypatch.setattr(blocker, "_already_blocked", lambda ips, tables, *a, **k: {"1.2.3.4"})
 
     result = blocker.apply_ips(["1.2.3.4", "5.6.7.8"])
     assert result["added"] == ["5.6.7.8"]
@@ -230,11 +230,11 @@ def test_apply_ips_skips_already_blocked(database, monkeypatch):
 
 def test_apply_ips_all_already_blocked(database, monkeypatch):
     monkeypatch.setattr(
-        blocker, "get_blocking_settings", lambda: _cfg(blocking_skip_tables="crowdsec_blacklists")
+        blocker, "get_blocking_settings", lambda *a, **k: _cfg(blocking_skip_tables="crowdsec_blacklists")
     )
     fake = FakeAPI()
-    monkeypatch.setattr(blocker, "_api", lambda: fake)
-    monkeypatch.setattr(blocker, "_already_blocked", lambda ips, tables: {"1.2.3.4"})
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
+    monkeypatch.setattr(blocker, "_already_blocked", lambda ips, tables, *a, **k: {"1.2.3.4"})
 
     result = blocker.apply_ips(["1.2.3.4"])
     assert result["ok"] is True
@@ -245,14 +245,14 @@ def test_apply_ips_all_already_blocked(database, monkeypatch):
 
 
 def test_apply_ips_sends_block_notification(database, monkeypatch):
-    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg(blocking_notify_email=True))
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg(blocking_notify_email=True))
     fake = FakeAPI()
-    monkeypatch.setattr(blocker, "_api", lambda: fake)
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
     sent = {}
     monkeypatch.setattr(
         blocker,
         "send_block_notification",
-        lambda ips, rule="", reasons=None, days=7, details=None: sent.update(ips=ips, rule=rule) or {"ok": True},
+        lambda ips, rule="", reasons=None, days=7, details=None, **k: sent.update(ips=ips, rule=rule) or {"ok": True},
     )
 
     result = blocker.apply_ips(["1.2.3.4"], rule="detection", source="auto")
@@ -262,9 +262,9 @@ def test_apply_ips_sends_block_notification(database, monkeypatch):
 
 
 def test_apply_ips_no_notification_when_disabled(database, monkeypatch):
-    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg(blocking_notify_email=False))
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg(blocking_notify_email=False))
     fake = FakeAPI()
-    monkeypatch.setattr(blocker, "_api", lambda: fake)
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
     called = {"count": 0}
     monkeypatch.setattr(
         blocker,
@@ -278,9 +278,9 @@ def test_apply_ips_no_notification_when_disabled(database, monkeypatch):
 
 
 def test_block_alerts_only_blockable_rules(database, monkeypatch):
-    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg())
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg())
     fake = FakeAPI()
-    monkeypatch.setattr(blocker, "_api", lambda: fake)
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
 
     alerts = [
         {"rule": "port_scan", "src_ip": "1.1.1.1"},
@@ -292,9 +292,9 @@ def test_block_alerts_only_blockable_rules(database, monkeypatch):
 
 
 def test_prune_expired_removes_from_alias(database, monkeypatch):
-    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg(blocking_ttl_hours=1))
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg(blocking_ttl_hours=1))
     fake = FakeAPI({"BLOCK": {"uuid": "u1", "name": "BLOCK", "type": "host", "enabled": "1", "content": ["1.2.3.4", "5.6.7.8"]}})
-    monkeypatch.setattr(blocker, "_api", lambda: fake)
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
     database.execute_write(
         'INSERT INTO blocked_ips ("ip", "rule", "source", "added_at", "expires_at") '
         "VALUES ('1.2.3.4', 'detection', 'auto', now(), now() - INTERVAL 1 HOUR)"
@@ -305,9 +305,9 @@ def test_prune_expired_removes_from_alias(database, monkeypatch):
 
 
 def test_unblock_ips_removes_from_alias_and_list(database, monkeypatch):
-    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg())
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg())
     fake = FakeAPI({"BLOCK": {"uuid": "u1", "name": "BLOCK", "type": "host", "enabled": "1", "content": ["1.2.3.4", "5.6.7.8"]}})
-    monkeypatch.setattr(blocker, "_api", lambda: fake)
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
     database.execute_write(
         'INSERT INTO blocked_ips ("ip", "rule", "source", "added_at", "expires_at") '
         "VALUES ('1.2.3.4', 'manual', 'manual', now(), NULL)"

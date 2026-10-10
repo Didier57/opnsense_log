@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from collections.abc import Callable
 from dataclasses import asdict
 from datetime import date, datetime
@@ -117,3 +118,19 @@ def _json_safe(row: dict) -> dict:
 
 
 live_hub = LiveHub()
+
+_hubs_lock = threading.Lock()
+_hubs_by_instance: dict[str, LiveHub] = {}
+
+
+def get_live_hub(instance_id: str | None = None) -> LiveHub:
+    """Return the live hub that fans events out for one OPNsense instance."""
+    from ..instances import resolve_instance_id
+
+    key = resolve_instance_id(instance_id) or ""
+    with _hubs_lock:
+        hub = _hubs_by_instance.get(key)
+        if hub is None:
+            hub = LiveHub()
+            _hubs_by_instance[key] = hub
+        return hub

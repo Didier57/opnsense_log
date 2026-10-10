@@ -20,130 +20,184 @@ from .geoip.resolver import geo_update_loop
 from .opnsense.settings_store import get_opnsense_settings
 from .opnsense.sync import OPNSenseSync
 from .storage.retention import retention_loop
-from .syslog.server import syslog_server
+from .syslog.server import syslog_manager
 
 logger = logging.getLogger("opnsense.main")
 
-# Set once the startup gap import has finished (or been skipped). The heartbeat
-# loop waits for it so it cannot advance the watermark past the downtime window
-# before the import has read it.
-_startup_import_done = asyncio.Event()
+
+def _instances() -> list[dict]:
+    """All configured OPNsense instances (best effort)."""
+    try:
+        from .instances import list_instances
+
+        return list_instances()
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not list OPNsense instances")
+        return []
 
 
 async def _opnsense_sync_loop() -> None:
-    """Periodically sync OPNsense config.
+    """Periodically sync every OPNsense instance.
 
-    Reads the enable flag and interval from the runtime settings store so the
+    Reads the enable flag and interval from each instance's settings so the
     values saved in the web UI take effect without a restart.
     """
+    last: dict[str, float] = {}
     while True:
-        try:
-            cfg = get_opnsense_settings(mask_password=False)
-        except Exception:  # noqa: BLE001
-            logger.exception("Could not read OPNsense settings")
-            cfg = {}
-        enabled = bool(cfg.get("opnsense_sync_enabled"))
-        interval_min = max(5, int(cfg.get("opnsense_sync_interval_min") or 30))
-        if enabled:
+        for inst in _instances():
+            iid = inst["id"]
             try:
-                await asyncio.to_thread(OPNSenseSync().sync)
+                cfg = get_opnsense_settings(mask_password=False, instance_id=iid)
             except Exception:  # noqa: BLE001
-                logger.exception("OPNsense sync loop error")
-            await asyncio.sleep(interval_min * 60)
-        else:
-            # Poll periodically so enabling the toggle is picked up quickly.
-            await asyncio.sleep(30)
+                logger.exception("Could not read OPNsense settings for %s", iid)
+                continue
+            if not cfg.get("opnsense_sync_enabled"):
+                continue
+            interval = max(5, int(cfg.get("opnsense_sync_interval_min") or 30)) * 60
+            now = time.monotonic()
+            if now - last.get(iid, 0.0) < interval:
+                continue
+            last[iid] = now
+            try:
+                await asyncio.to_thread(OPNSenseSync(instance_id=iid).sync)
+            except Exception:  # noqa: BLE001
+                logger.exception("OPNsense sync failed for %s", iid)
+        # Poll frequently so enabling a toggle or adding an instance is picked up.
+        await asyncio.sleep(30)
 
 
-async def _startup_filterlog_import() -> None:
-    """Fill the gap left while the container was down by importing OPNsense logs.
+# Per-instance "startup import finished" events. The heartbeat loop waits on
+# each one so it cannot advance the watermark past the downtime window before
+# the import has read it.
+_import_done_events: dict[str, asyncio.Event] = {}
+_import_tasks: dict[str, asyncio.Task] = {}
+
+
+def _import_done_event(instance_id: str) -> asyncio.Event:
+    event = _import_done_events.get(instance_id)
+    if event is None:
+        event = asyncio.Event()
+        _import_done_events[instance_id] = event
+    return event
+
+
+async def _startup_filterlog_import_instance(instance_id: str) -> None:
+    """Fill the gap left while the container was down for one instance.
 
     OPNsense does not resume sending syslog immediately after a restart, so we
     first wait (bounded by ``opnsense_import_wait_syslog_sec``) until a *new*
     event (newer than everything already stored) is received again, then backfill
-    the files only up to that first event time. This fills the blind window
-    between the newest stored event and syslog resumption without importing
-    events that syslog already stored.
+    the files only up to that first event time.
     """
+    event = _import_done_event(instance_id)
     try:
-        cfg = get_opnsense_settings(mask_password=False)
+        cfg = get_opnsense_settings(mask_password=False, instance_id=instance_id)
     except Exception:  # noqa: BLE001
-        logger.exception("Could not read OPNsense settings for startup import")
-        _startup_import_done.set()
-        return
-    if not cfg.get("opnsense_host") or not cfg.get("opnsense_import_on_start", True):
-        _startup_import_done.set()
+        logger.exception("Could not read OPNsense settings for startup import (%s)", instance_id)
+        event.set()
         return
     try:
+        if not cfg.get("opnsense_host") or not cfg.get("opnsense_import_on_start", True):
+            return
         from .opnsense.filterlog_import import (
             first_event_after,
             global_max_event_time,
             run_import,
         )
 
-        marker = await asyncio.to_thread(global_max_event_time)
+        marker = await asyncio.to_thread(global_max_event_time, instance_id)
         if marker is None:
-            logger.info("No stored events yet; skipping startup OPNsense import")
+            logger.info("No stored events yet; skipping startup OPNsense import (%s)", instance_id)
             return
         wait_sec = max(0, int(cfg.get("opnsense_import_wait_syslog_sec") or 120))
         until = None
         waited = 0
         while waited < wait_sec:
-            candidate = await asyncio.to_thread(first_event_after, marker)
+            candidate = await asyncio.to_thread(first_event_after, marker, instance_id)
             if candidate is not None:
                 until = candidate
-                logger.info("Syslog reception resumed at %s; backfilling files", candidate)
+                logger.info(
+                    "Syslog reception resumed at %s; backfilling files (%s)", candidate, instance_id
+                )
                 break
             await asyncio.sleep(3)
             waited += 3
         if until is None:
-            logger.info("No syslog received within %ds; importing files up to now", wait_sec)
+            logger.info(
+                "No syslog received within %ds; importing files up to now (%s)", wait_sec, instance_id
+            )
         await asyncio.to_thread(
-            run_import, False, until, int(cfg.get("opnsense_import_max_days") or 0)
+            run_import, False, until, int(cfg.get("opnsense_import_max_days") or 0), instance_id
         )
-        logger.info("Startup OPNsense filter log import finished")
+        logger.info("Startup OPNsense filter log import finished (%s)", instance_id)
     except Exception:  # noqa: BLE001
-        logger.exception("Startup filter log import failed")
+        logger.exception("Startup filter log import failed (%s)", instance_id)
     finally:
-        _startup_import_done.set()
+        event.set()
+
+
+async def _startup_filterlog_import_loop() -> None:
+    """Launch the startup gap import once per (new) instance."""
+    while True:
+        for inst in _instances():
+            iid = inst["id"]
+            task = _import_tasks.get(iid)
+            if task is None or task.done():
+                if task is not None and task.done():
+                    continue  # already ran once; never restart
+                _import_tasks[iid] = asyncio.create_task(
+                    _startup_filterlog_import_instance(iid), name=f"filterlog-import-{iid}"
+                )
+        await asyncio.sleep(30)
 
 
 async def _filterlog_heartbeat_loop() -> None:
-    """Persist a periodic heartbeat while the application runs.
+    """Persist a periodic heartbeat per instance while the application runs.
 
     The heartbeat marks the last moment the app was known to be up, so the next
     startup can compute the precise downtime window and only fill that gap. It is
-    held back until the startup import has finished so it cannot erase the gap.
+    held back until that instance's startup import has finished so it cannot
+    erase the gap.
     """
     from .opnsense.filterlog_import import set_last_run
 
-    await _startup_import_done.wait()
     while True:
-        try:
-            await asyncio.to_thread(set_last_run)
-        except Exception:  # noqa: BLE001
-            logger.exception("Could not record filter log import heartbeat")
+        for inst in _instances():
+            iid = inst["id"]
+            event = _import_done_events.get(iid)
+            if event is None or not event.is_set():
+                continue
+            try:
+                await asyncio.to_thread(set_last_run, None, iid)
+            except Exception:  # noqa: BLE001
+                logger.exception("Could not record filter log import heartbeat (%s)", iid)
         await asyncio.sleep(30)
 
 
 async def _blocking_reconcile_once() -> None:
-    """Re-apply recorded blocks that are missing from the firewall alias.
+    """Re-apply recorded blocks that are missing from each firewall alias.
 
     Repairs drift after a restart (e.g. an OPNsense reboot cleared the alias).
     """
-    try:
-        from .detection.blocking_store import get_blocking_settings
-        from .opnsense.blocker import reconcile_alias
+    from .detection.blocking_store import get_blocking_settings
+    from .opnsense.blocker import reconcile_alias
 
-        cfg = get_blocking_settings()
-        if not cfg.get("blocking_enabled") or cfg.get("blocking_dry_run"):
-            return
-        await asyncio.sleep(30)
-        result = await asyncio.to_thread(reconcile_alias)
-        if result.get("reconciled"):
-            logger.info("Startup blocking reconciliation restored %d IP(s)", result["reconciled"])
-    except Exception:  # noqa: BLE001 - never break startup
-        logger.exception("Startup blocking reconciliation failed")
+    await asyncio.sleep(30)
+    for inst in _instances():
+        iid = inst["id"]
+        try:
+            cfg = get_blocking_settings(instance_id=iid)
+            if not cfg.get("blocking_enabled") or cfg.get("blocking_dry_run"):
+                continue
+            result = await asyncio.to_thread(reconcile_alias, iid)
+            if result.get("reconciled"):
+                logger.info(
+                    "Startup blocking reconciliation restored %d IP(s) (%s)",
+                    result["reconciled"],
+                    iid,
+                )
+        except Exception:  # noqa: BLE001 - never break startup
+            logger.exception("Startup blocking reconciliation failed (%s)", iid)
 
 
 @asynccontextmanager
@@ -153,10 +207,18 @@ async def lifespan(app: FastAPI):
     # application (this process), starting from now.
     counters.started_at = time.time()
     logger.info("Starting OPNsense Log Analyzer")
-    # Bind the syslog socket *before* opening the database so that events start
+    # Ensure at least one OPNsense instance exists (migrating legacy data on the
+    # first run) before binding any listener.
+    try:
+        from .instances import bootstrap
+
+        await asyncio.to_thread(bootstrap)
+    except Exception:  # noqa: BLE001 - never block startup on bootstrap
+        logger.exception("Instance bootstrap failed")
+    # Bind the syslog sockets *before* opening the database so that events start
     # flowing into the Live view immediately, even when opening a large DuckDB
     # file (WAL replay) is slow. Workers resolve the DB lazily on first flush.
-    await syslog_server.start()
+    await syslog_manager.start_all()
     logger.info("Syslog listener is up; waiting for data")
     # Initialise storage early so schema exists before the first insert. Running
     # it in a thread keeps the event loop (and syslog reception) responsive.
@@ -177,13 +239,13 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(_opnsense_sync_loop(), name="opnsense-sync"),
         asyncio.create_task(detection_loop(), name="detection"),
         asyncio.create_task(geo_update_loop(), name="geoip"),
-        asyncio.create_task(_startup_filterlog_import(), name="filterlog-import"),
+        asyncio.create_task(_startup_filterlog_import_loop(), name="filterlog-import"),
         asyncio.create_task(_filterlog_heartbeat_loop(), name="filterlog-heartbeat"),
         asyncio.create_task(_blocking_reconcile_once(), name="blocking-reconcile"),
     ]
     yield
     logger.info("Shutting down")
-    await syslog_server.stop()
+    await syslog_manager.stop_all()
     for task in tasks:
         task.cancel()
 

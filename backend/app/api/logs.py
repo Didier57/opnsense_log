@@ -6,10 +6,9 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Query
 
 from ..storage.repository import EventRepository
-from .deps import require_user
+from .deps import InstanceId, require_user
 
 router = APIRouter(prefix="/api/logs", tags=["logs"])
-repo = EventRepository()
 
 
 @router.get("")
@@ -28,8 +27,10 @@ def query_logs(
     limit: int = Query(100, ge=1, le=5000),
     offset: int = Query(0, ge=0),
     order_dir: str = "desc",
+    instance: str | None = InstanceId,
     user: str = Depends(require_user),
 ) -> dict:
+    repo = EventRepository(instance_id=instance)
     clauses: list[dict] = []
     for field, value in (
         ("action", action),

@@ -121,3 +121,26 @@ class AllowlistAdd(BaseModel):
 
 class AllowlistRemove(BaseModel):
     ips: list[str] = Field(default_factory=list)
+
+
+class InstanceCreate(BaseModel):
+    name: str | None = None
+    syslog_port: int | None = Field(default=None, ge=1, le=65535)
+    syslog_protocol: str | None = None
+
+
+class InstanceUpdate(BaseModel):
+    name: str | None = None
+    enabled: bool | None = None
+    syslog_port: int | None = Field(default=None, ge=1, le=65535)
+    syslog_protocol: str | None = None
+
+
+class Instance(BaseModel):
+    id: str
+    name: str
+    enabled: bool = True
+    position: int = 0
+    syslog_port: int | None = None
+    syslog_protocol: str | None = None
+    created_at: str | None = None

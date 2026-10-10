@@ -167,6 +167,16 @@ CREATE TABLE IF NOT EXISTS allowlist_ips (
     "note"       VARCHAR,
     "added_at"   TIMESTAMPTZ
 );
+
+CREATE TABLE IF NOT EXISTS instances (
+    "id"              VARCHAR PRIMARY KEY,
+    "name"            VARCHAR,
+    "enabled"         BOOLEAN,
+    "position"        INTEGER,
+    "syslog_port"     INTEGER,
+    "syslog_protocol" VARCHAR,
+    "created_at"      TIMESTAMPTZ
+);
 """
 
 
@@ -221,13 +231,55 @@ class Database:
         self._write_conn.close()
 
 
-_instance: Database | None = None
-_instance_lock = threading.Lock()
+def system_db_path() -> str:
+    """Path of the small system database (instance registry + global settings)."""
+    return str(Path(settings.data_dir) / "system.duckdb")
 
 
-def get_database() -> Database:
-    global _instance
-    with _instance_lock:
-        if _instance is None:
-            _instance = Database()
-        return _instance
+def instance_db_path(instance_id: str) -> str:
+    """Path of the dedicated database file of one OPNsense instance."""
+    return str(Path(settings.data_dir) / "instances" / f"{instance_id}.duckdb")
+
+
+def legacy_db_path() -> str:
+    """Path of the pre-multi-instance single database (for migration)."""
+    return str(Path(settings.data_dir) / settings.db_filename)
+
+
+_databases: dict[str | None, Database] = {}
+_databases_lock = threading.Lock()
+
+
+def get_database(instance_id: str | None = None) -> Database:
+    """Return the DuckDB wrapper for the system DB or for one instance.
+
+    ``None`` maps to the system database that stores the instance registry and
+    the global (shared) settings. Any other value is a per-instance database
+    holding that firewall's logs, alerts, blocking state and settings.
+    """
+    with _databases_lock:
+        db = _databases.get(instance_id)
+        if db is None:
+            path = system_db_path() if instance_id is None else instance_db_path(instance_id)
+            db = Database(path)
+            _databases[instance_id] = db
+        return db
+
+
+def close_database(instance_id: str | None) -> None:
+    with _databases_lock:
+        db = _databases.pop(instance_id, None)
+    if db is not None:
+        db.close()
+
+
+def reset_databases() -> None:
+    """Close and forget every open database (used by tests)."""
+    with _databases_lock:
+        dbs = list(_databases.values())
+        _databases.clear()
+    for db in dbs:
+        try:
+            db.close()
+        except Exception:  # noqa: BLE001
+            pass

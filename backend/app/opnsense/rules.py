@@ -1,11 +1,12 @@
 """Read access to synchronised OPNsense rules and their history."""
 from __future__ import annotations
 
+from ..instances import resolve_instance_id
 from ..storage.database import get_database
 
 
-def list_rules() -> list[dict]:
-    db = get_database()
+def list_rules(instance_id: str | None = None) -> list[dict]:
+    db = get_database(resolve_instance_id(instance_id))
     rows = db.execute_read(
         """
         SELECT r.rule_id, r.rule_number, r.description, r.interface, i.description,
@@ -22,8 +23,8 @@ def list_rules() -> list[dict]:
     return [dict(zip(keys, row)) for row in rows]
 
 
-def get_rule(rule_id: str) -> dict | None:
-    db = get_database()
+def get_rule(rule_id: str, instance_id: str | None = None) -> dict | None:
+    db = get_database(resolve_instance_id(instance_id))
     row = db.execute_read(
         "SELECT r.rule_id, r.description, r.interface, i.description, r.action, r.direction, "
         "r.protocol, r.source, r.destination, r.enabled, r.updated_at "
@@ -40,8 +41,8 @@ def get_rule(rule_id: str) -> dict | None:
     return dict(zip(keys, row))
 
 
-def get_rule_history(rule_id: str) -> list[dict]:
-    db = get_database()
+def get_rule_history(rule_id: str, instance_id: str | None = None) -> list[dict]:
+    db = get_database(resolve_instance_id(instance_id))
     rows = db.execute_read(
         "SELECT valid_from, description, interface, action FROM rule_history "
         "WHERE rule_id = ? ORDER BY valid_from",

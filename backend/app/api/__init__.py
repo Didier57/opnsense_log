@@ -9,6 +9,7 @@ from . import (
     filters,
     geoip,
     health,
+    instances,
     interfaces,
     live,
     logs,
@@ -23,7 +24,7 @@ from . import (
 
 api_router = APIRouter()
 for module in (
-    health, auth, logs, search, statistics, filters, rules, interfaces,
+    health, auth, instances, logs, search, statistics, filters, rules, interfaces,
     settings, system, export, live, lookup, detection, geoip, opnsense_import,
     blocking_public,
 ):

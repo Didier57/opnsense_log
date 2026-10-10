@@ -8,7 +8,7 @@ import app.core.hostnames as hn
 @pytest.fixture()
 def resolver(tmp_path, monkeypatch):
     database = Database(str(tmp_path / "hosts.duckdb"))
-    monkeypatch.setattr(hn, "get_database", lambda: database)
+    monkeypatch.setattr(hn, "get_database", lambda *a, **k: database)
     instance = hn.HostnameResolver()
     yield instance
     database.close()

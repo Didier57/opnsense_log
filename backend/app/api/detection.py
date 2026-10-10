@@ -17,7 +17,7 @@ from ..opnsense.blocker import (
     refresh_detected_tables,
     unblock_ips,
 )
-from .deps import require_user
+from .deps import InstanceId, require_user
 from .schemas import (
     AllowlistAdd,
     AllowlistRemove,
@@ -34,30 +34,35 @@ router = APIRouter(prefix="/api", tags=["detection"])
 def get_alerts(
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
+    instance: str | None = InstanceId,
     user: str = Depends(require_user),
 ) -> dict:
-    return list_alerts(limit=limit, offset=offset)
+    return list_alerts(limit=limit, offset=offset, instance_id=instance)
 
 
 @router.delete("/alerts")
-def delete_alerts(user: str = Depends(require_user)) -> dict:
-    return {"ok": True, "deleted": clear_alerts()}
+def delete_alerts(instance: str | None = InstanceId, user: str = Depends(require_user)) -> dict:
+    return {"ok": True, "deleted": clear_alerts(instance_id=instance)}
 
 
 @router.post("/alerts/run")
-def run_detection(user: str = Depends(require_user)) -> dict:
-    created = run_cycle()
+def run_detection(instance: str | None = InstanceId, user: str = Depends(require_user)) -> dict:
+    created = run_cycle(instance_id=instance)
     return {"ok": True, "created": len(created), "alerts": created}
 
 
 @router.get("/settings/detection")
-def get_detection(user: str = Depends(require_user)) -> dict:
-    return get_detection_settings()
+def get_detection(instance: str | None = InstanceId, user: str = Depends(require_user)) -> dict:
+    return get_detection_settings(instance_id=instance)
 
 
 @router.put("/settings/detection")
-def put_detection(payload: DetectionSettings, user: str = Depends(require_user)) -> dict:
-    return update_detection_settings(payload.model_dump(exclude_none=True))
+def put_detection(
+    payload: DetectionSettings,
+    instance: str | None = InstanceId,
+    user: str = Depends(require_user),
+) -> dict:
+    return update_detection_settings(payload.model_dump(exclude_none=True), instance_id=instance)
 
 
 @router.get("/settings/notifications")
@@ -76,60 +81,82 @@ def test_notifications(user: str = Depends(require_user)) -> dict:
 
 
 @router.get("/settings/blocking")
-def get_blocking(user: str = Depends(require_user)) -> dict:
-    return get_blocking_settings()
+def get_blocking(instance: str | None = InstanceId, user: str = Depends(require_user)) -> dict:
+    return get_blocking_settings(instance_id=instance)
 
 
 @router.put("/settings/blocking")
-def put_blocking(payload: BlockingSettings, user: str = Depends(require_user)) -> dict:
-    return update_blocking_settings(payload.model_dump(exclude_none=True))
+def put_blocking(
+    payload: BlockingSettings,
+    instance: str | None = InstanceId,
+    user: str = Depends(require_user),
+) -> dict:
+    return update_blocking_settings(payload.model_dump(exclude_none=True), instance_id=instance)
 
 
 @router.post("/settings/blocking/detect-tables")
-def detect_blocking_tables(user: str = Depends(require_user)) -> dict:
+def detect_blocking_tables(
+    instance: str | None = InstanceId, user: str = Depends(require_user)
+) -> dict:
     """Detect the pf block tables present on the firewall (CrowdSec, Q-Feeds...)."""
-    tables = refresh_detected_tables()
-    return {"ok": True, "tables": tables, "settings": get_blocking_settings()}
+    tables = refresh_detected_tables(instance_id=instance)
+    return {"ok": True, "tables": tables, "settings": get_blocking_settings(instance_id=instance)}
 
 
 @router.post("/settings/blocking/reconcile")
-def reconcile_blocking(user: str = Depends(require_user)) -> dict:
+def reconcile_blocking(instance: str | None = InstanceId, user: str = Depends(require_user)) -> dict:
     """Re-add recorded blocks missing from the firewall alias (drift repair)."""
-    return reconcile_alias()
+    return reconcile_alias(instance_id=instance)
 
 
 @router.get("/settings/blocking/allowlist")
-def get_allowlist(user: str = Depends(require_user)) -> dict:
-    return {"items": list_allowlist()}
+def get_allowlist(instance: str | None = InstanceId, user: str = Depends(require_user)) -> dict:
+    return {"items": list_allowlist(instance_id=instance)}
 
 
 @router.post("/settings/blocking/allowlist")
-def add_allowlist_endpoint(payload: AllowlistAdd, user: str = Depends(require_user)) -> dict:
-    added = add_allowlist(payload.ips, payload.note or "")
-    return {"ok": True, "added": added, "items": list_allowlist()}
+def add_allowlist_endpoint(
+    payload: AllowlistAdd,
+    instance: str | None = InstanceId,
+    user: str = Depends(require_user),
+) -> dict:
+    added = add_allowlist(payload.ips, payload.note or "", instance_id=instance)
+    return {"ok": True, "added": added, "items": list_allowlist(instance_id=instance)}
 
 
 @router.delete("/settings/blocking/allowlist")
-def remove_allowlist_endpoint(payload: AllowlistRemove, user: str = Depends(require_user)) -> dict:
-    removed = remove_allowlist(payload.ips)
-    return {"ok": True, "removed": removed, "items": list_allowlist()}
+def remove_allowlist_endpoint(
+    payload: AllowlistRemove,
+    instance: str | None = InstanceId,
+    user: str = Depends(require_user),
+) -> dict:
+    removed = remove_allowlist(payload.ips, instance_id=instance)
+    return {"ok": True, "removed": removed, "items": list_allowlist(instance_id=instance)}
 
 
 @router.get("/blocking/list")
-def get_blocked(user: str = Depends(require_user)) -> dict:
-    return {"items": list_blocked()}
+def get_blocked(instance: str | None = InstanceId, user: str = Depends(require_user)) -> dict:
+    return {"items": list_blocked(instance_id=instance)}
 
 
 @router.post("/blocking/apply")
-def block_now(payload: BlockRequest, user: str = Depends(require_user)) -> dict:
-    return apply_ips(payload.ips, rule="manual", source="manual")
+def block_now(
+    payload: BlockRequest,
+    instance: str | None = InstanceId,
+    user: str = Depends(require_user),
+) -> dict:
+    return apply_ips(payload.ips, rule="manual", source="manual", instance_id=instance)
 
 
 @router.post("/blocking/prune")
-def prune_blocked(user: str = Depends(require_user)) -> dict:
-    return {"ok": True, "removed": prune_expired()}
+def prune_blocked(instance: str | None = InstanceId, user: str = Depends(require_user)) -> dict:
+    return {"ok": True, "removed": prune_expired(instance_id=instance)}
 
 
 @router.post("/blocking/remove")
-def unblock_now(payload: BlockRequest, user: str = Depends(require_user)) -> dict:
-    return unblock_ips(payload.ips)
+def unblock_now(
+    payload: BlockRequest,
+    instance: str | None = InstanceId,
+    user: str = Depends(require_user),
+) -> dict:
+    return unblock_ips(payload.ips, instance_id=instance)

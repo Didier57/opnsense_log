@@ -87,8 +87,10 @@ button.nav-group-toggle:hover { color: var(--text); }
 .sidebar a.nav-link:hover { background: var(--bg-panel); text-decoration: none; }
 
 .main { flex: 1; padding: 20px 24px; overflow-x: auto; }
-.topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; position: relative; }
 .topbar h2 { margin: 0; font-size: 20px; }
+.instance-switch { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; }
+.instance-switch select { min-width: 220px; }
 
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 20px; }
 .card { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }

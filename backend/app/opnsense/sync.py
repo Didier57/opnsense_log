@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 from ..geoip.store import get_geo_settings, set_geo_credentials
+from ..instances import resolve_instance_id
 from ..storage.database import Database, get_database
 from .config_loader import (
     parse_config,
@@ -31,14 +32,20 @@ RULES_DEBUG_PATH = "/tmp/rules.debug"
 
 
 class OPNSenseSync:
-    def __init__(self, db: Database | None = None, ssh: OPNsenseSSH | None = None) -> None:
-        self.db = db or get_database()
-        self.ssh = ssh or self._build_ssh()
+    def __init__(
+        self,
+        db: Database | None = None,
+        ssh: OPNsenseSSH | None = None,
+        instance_id: str | None = None,
+    ) -> None:
+        self.instance_id = instance_id
+        self.db = db or get_database(resolve_instance_id(instance_id))
+        self.ssh = ssh or self._build_ssh(instance_id)
         self.lease_paths: list[str] = []
 
     @staticmethod
-    def _build_ssh() -> OPNsenseSSH:
-        cfg = get_opnsense_settings(mask_password=False)
+    def _build_ssh(instance_id: str | None = None) -> OPNsenseSSH:
+        cfg = get_opnsense_settings(mask_password=False, instance_id=instance_id)
         return OPNsenseSSH(
             host=cfg["opnsense_host"],
             port=cfg["opnsense_ssh_port"],
@@ -124,7 +131,8 @@ class OPNSenseSync:
                 {
                     "opnsense_api_scheme": webgui["protocol"],
                     "opnsense_api_port": webgui["port"],
-                }
+                },
+                instance_id=self.instance_id,
             )
             logger.info(
                 "OPNsense web GUI detected on %s://<host>:%s",
@@ -178,7 +186,7 @@ class OPNSenseSync:
         try:
             from .blocker import refresh_detected_tables
 
-            detected = refresh_detected_tables()
+            detected = refresh_detected_tables(self.instance_id)
             if detected:
                 logger.info("Detected %d existing block table(s): %s", len(detected), ", ".join(detected))
         except Exception:  # noqa: BLE001 - detection is best-effort

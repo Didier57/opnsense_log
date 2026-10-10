@@ -7,7 +7,7 @@ from ..geoip import (
     get_geo_settings,
     update_geo_settings,
 )
-from .deps import require_user
+from .deps import InstanceId, require_user
 from .schemas import GeoIpSettings
 
 router = APIRouter(prefix="/api", tags=["geoip"])
@@ -18,10 +18,11 @@ _MAX_IPS = 200
 @router.get("/geo")
 def lookup_countries(
     ips: str = Query(default="", description="Comma-separated list of IP addresses"),
+    instance: str | None = InstanceId,
     user: str = Depends(require_user),
 ) -> dict:
     values = [item.strip() for item in ips.split(",") if item.strip()][:_MAX_IPS]
-    return {"items": geo_resolver.resolve(values)}
+    return {"items": geo_resolver.resolve(values, instance_id=instance)}
 
 
 @router.get("/settings/geoip")

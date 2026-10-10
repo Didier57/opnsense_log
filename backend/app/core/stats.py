@@ -50,3 +50,19 @@ class Counters:
 
 
 counters = Counters()
+
+_counters_lock = threading.Lock()
+_counters_by_instance: dict[str, Counters] = {}
+
+
+def get_counters(instance_id: str | None = None) -> Counters:
+    """Return the runtime counters for an instance (or the system default)."""
+    from ..instances import resolve_instance_id
+
+    key = resolve_instance_id(instance_id) or ""
+    with _counters_lock:
+        existing = _counters_by_instance.get(key)
+        if existing is None:
+            existing = Counters()
+            _counters_by_instance[key] = existing
+        return existing

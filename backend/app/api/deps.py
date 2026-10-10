@@ -29,3 +29,11 @@ async def require_user(
 
 
 CurrentUser = Depends(require_user)
+
+
+def pick_instance(instance: str | None = None) -> str | None:
+    """Instance selector supplied by the client as the ``instance`` query param."""
+    return instance
+
+
+InstanceId = Depends(pick_instance)

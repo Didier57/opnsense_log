@@ -30,8 +30,8 @@ LINE_05H = (
 @pytest.fixture()
 def database(tmp_path, monkeypatch):
     db = Database(str(tmp_path / "t.duckdb"))
-    monkeypatch.setattr("app.storage.repository.get_database", lambda: db)
-    monkeypatch.setattr("app.storage.database.get_database", lambda: db)
+    monkeypatch.setattr("app.storage.repository.get_database", lambda *a, **k: db)
+    monkeypatch.setattr("app.storage.database.get_database", lambda *a, **k: db)
     yield db
     db.close()
 
@@ -94,7 +94,7 @@ def test_run_import_gap_mode(database, monkeypatch):
     fi.import_job._reset_run()
     fi._import_file(repo, seed, path, None, None)
     ssh = FakeSSH([path], {f"cat {path}": [LINE_10H, LINE_08H]})
-    monkeypatch.setattr(fi, "_build_ssh", lambda: ssh)
+    monkeypatch.setattr(fi, "_build_ssh", lambda *a, **k: ssh)
     result = fi.run_import()
     assert result["error"] is None
     assert result["files_total"] == 1
@@ -106,7 +106,7 @@ def test_run_import_gap_mode(database, monkeypatch):
 def test_run_import_empty_db_skips_all(database, monkeypatch):
     path = "/var/log/filter/filter_20261006.log"
     ssh = FakeSSH([path], {f"cat {path}": [LINE_10H, LINE_08H]})
-    monkeypatch.setattr(fi, "_build_ssh", lambda: ssh)
+    monkeypatch.setattr(fi, "_build_ssh", lambda *a, **k: ssh)
     result = fi.run_import()
     assert result["error"] is None
     assert result["files_skipped"] == 1
@@ -132,7 +132,7 @@ def test_run_import_fills_gap_after_newest_event(database, monkeypatch):
     # The file still contains the already-stored 07:00/08:00 plus a new 10:00;
     # only the record newer than the newest stored event must be imported.
     ssh = FakeSSH([path], {f"cat {path}": [LINE_07H, LINE_08H, LINE_10H]})
-    monkeypatch.setattr(fi, "_build_ssh", lambda: ssh)
+    monkeypatch.setattr(fi, "_build_ssh", lambda *a, **k: ssh)
     result = fi.run_import(until=datetime(2026, 10, 6, 10, 30, tzinfo=timezone.utc))
     assert result["error"] is None
     assert result["inserted"] == 1
@@ -148,7 +148,7 @@ def test_run_import_skips_covered_day(database, monkeypatch):
     # Heartbeat after the day is over -> the whole day file must be skipped.
     fi.set_last_run(datetime(2026, 10, 8, tzinfo=timezone.utc))
     ssh = FakeSSH([path], {f"cat {path}": [LINE_08H]})
-    monkeypatch.setattr(fi, "_build_ssh", lambda: ssh)
+    monkeypatch.setattr(fi, "_build_ssh", lambda *a, **k: ssh)
     result = fi.run_import()
     assert result["files_skipped"] == 1
     assert result["inserted"] == 0
@@ -176,7 +176,7 @@ def test_run_import_until_caps_window(database, monkeypatch):
     fi.import_job._reset_run()
     fi._import_file(repo, seed, path, None, None)
     ssh = FakeSSH([path], {f"cat {path}": [LINE_08H, LINE_10H]})
-    monkeypatch.setattr(fi, "_build_ssh", lambda: ssh)
+    monkeypatch.setattr(fi, "_build_ssh", lambda *a, **k: ssh)
     # until=08:30 caps the window: only the 08:00 record is imported, the 10:00
     # one is left to live syslog (already covered).
     result = fi.run_import(until=datetime(2026, 10, 6, 8, 30, tzinfo=timezone.utc))
@@ -196,7 +196,7 @@ def test_run_import_ignores_events_stored_after_until(database, monkeypatch):
     fi._import_file(repo, seed, path, None, None)
     assert repo.count() == 2
     ssh = FakeSSH([path], {f"cat {path}": [LINE_07H, LINE_08H, LINE_10H]})
-    monkeypatch.setattr(fi, "_build_ssh", lambda: ssh)
+    monkeypatch.setattr(fi, "_build_ssh", lambda *a, **k: ssh)
     # until=08:30 must still recover the 08:00 gap even though a 10:00 event is
     # already stored: that newer event must not collapse the window to nothing.
     result = fi.run_import(until=datetime(2026, 10, 6, 8, 30, tzinfo=timezone.utc))
@@ -214,7 +214,7 @@ def test_run_import_does_not_recover_old_missing_day(database, monkeypatch):
     fi.import_job._reset_run()
     fi._import_file(repo, seed, day6, None, None)
     ssh = FakeSSH([day5, day6], {f"cat {day5}": [LINE_05H], f"cat {day6}": [LINE_07H]})
-    monkeypatch.setattr(fi, "_build_ssh", lambda: ssh)
+    monkeypatch.setattr(fi, "_build_ssh", lambda *a, **k: ssh)
     result = fi.run_import()
     assert result["error"] is None
     # A day entirely missing but older than the downtime window is NOT recovered
@@ -230,7 +230,7 @@ def test_run_import_max_days_limits_scan(database, monkeypatch):
     fi.import_job._reset_run()
     fi._import_file(repo, seed, day6, None, None)
     ssh = FakeSSH([day6], {f"cat {day6}": [LINE_10H]})
-    monkeypatch.setattr(fi, "_build_ssh", lambda: ssh)
+    monkeypatch.setattr(fi, "_build_ssh", lambda *a, **k: ssh)
     # max_days=0 disables the limit (default), max_days=1 excludes the older day.
     result = fi.run_import(max_days=1)
     assert result["error"] is None

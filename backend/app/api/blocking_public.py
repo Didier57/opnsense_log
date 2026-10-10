@@ -11,7 +11,7 @@ import logging
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse
 
-from ..core.security import decode_unblock_token
+from ..core.security import decode_unblock_token_data
 from ..opnsense.blocker import unblock_ips
 
 logger = logging.getLogger("opnsense.blocking_public")
@@ -40,7 +40,8 @@ def _page(title: str, message: str, content: str = "") -> str:
 
 @router.get("/unblock")
 def unblock_page(token: str = Query(default="")) -> HTMLResponse:
-    ip = decode_unblock_token(token)
+    data = decode_unblock_token_data(token)
+    ip = (data or {}).get("ip") or ""
     if not ip:
         return HTMLResponse(
             _page("Lien invalide", "Ce lien de déblocage est invalide ou a expiré."),
@@ -59,14 +60,16 @@ def unblock_page(token: str = Query(default="")) -> HTMLResponse:
 async def unblock_confirm(request: Request) -> HTMLResponse:
     form = await request.form()
     token = str(form.get("token") or "")
-    ip = decode_unblock_token(token)
+    data = decode_unblock_token_data(token)
+    ip = (data or {}).get("ip") or ""
+    instance_id = (data or {}).get("instance_id") or None
     if not ip:
         return HTMLResponse(
             _page("Lien invalide", "Ce lien de déblocage est invalide ou a expiré."),
             status_code=400,
         )
     try:
-        result = unblock_ips([ip])
+        result = unblock_ips([ip], instance_id=instance_id)
     except Exception:  # noqa: BLE001
         logger.exception("Unblock failed")
         return HTMLResponse(

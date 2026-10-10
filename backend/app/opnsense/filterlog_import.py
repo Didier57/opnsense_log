@@ -35,6 +35,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
+from ..instances import resolve_instance_id
 from ..parser import parse_message
 from ..parser.tz import source_tz
 from ..storage.repository import EventRepository
@@ -106,10 +107,29 @@ class ImportJob:
 
 
 import_job = ImportJob()
+_import_jobs: dict[str, ImportJob] = {}
+_import_jobs_lock = threading.Lock()
 
 
-def _build_ssh() -> OPNsenseSSH:
-    cfg = get_opnsense_settings(mask_password=False)
+def get_import_job(instance_id: str | None = None) -> ImportJob:
+    """Return the (single) background import job for an instance.
+
+    Falls back to the module-level default job when no instance can be resolved
+    (tests, first boot), so the historical ``import_job`` keeps working.
+    """
+    key = resolve_instance_id(instance_id) or ""
+    if not key:
+        return import_job
+    with _import_jobs_lock:
+        job = _import_jobs.get(key)
+        if job is None:
+            job = ImportJob()
+            _import_jobs[key] = job
+        return job
+
+
+def _build_ssh(instance_id: str | None = None) -> OPNsenseSSH:
+    cfg = get_opnsense_settings(mask_password=False, instance_id=instance_id)
     if not cfg.get("opnsense_host"):
         raise RuntimeError("OPNsense host not configured")
     return OPNsenseSSH(
@@ -159,24 +179,24 @@ def _max_event_time_before(repo: EventRepository, before: datetime) -> datetime 
     return row[0] if row else None
 
 
-def last_run() -> datetime | None:
+def last_run(instance_id: str | None = None) -> datetime | None:
     """Last recorded heartbeat (when the app was known to be up)."""
-    return _get_last_run(EventRepository())
+    return _get_last_run(EventRepository(instance_id=instance_id))
 
 
-def global_max_event_time() -> datetime | None:
+def global_max_event_time(instance_id: str | None = None) -> datetime | None:
     """Newest stored event time (end of what syslog has already persisted)."""
-    return _global_max_event_time(EventRepository())
+    return _global_max_event_time(EventRepository(instance_id=instance_id))
 
 
-def first_event_after(after: datetime | None) -> datetime | None:
+def first_event_after(after: datetime | None, instance_id: str | None = None) -> datetime | None:
     """Earliest stored event newer than ``after`` (or the earliest overall).
 
     Used at startup to detect when live syslog reception resumed: the returned
     time is the boundary up to which the SSH import must fill the gap, so the
     already-received events are never imported a second time.
     """
-    repo = EventRepository()
+    repo = EventRepository(instance_id=instance_id)
     if after is None:
         row = repo.db.execute_read('SELECT MIN("event_time") FROM events').fetchone()
     else:
@@ -206,10 +226,10 @@ def _get_last_run(repo: EventRepository) -> datetime | None:
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
-def set_last_run(when: datetime | None = None) -> None:
+def set_last_run(when: datetime | None = None, instance_id: str | None = None) -> None:
     """Persist a heartbeat so the next startup knows the downtime window."""
     moment = (when or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    repo = EventRepository()
+    repo = EventRepository(instance_id=instance_id)
     repo.db.execute_write(
         'INSERT INTO app_settings ("key", "value", "updated_at") VALUES (?, ?, now()) '
         'ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value", "updated_at" = now()',
@@ -246,6 +266,7 @@ def _import_file(
     after: datetime | None = None,
     before: datetime | None = None,
     windows: list[tuple[datetime, datetime]] | None = None,
+    job: ImportJob | None = None,
 ) -> None:
     """Import records from a remote file.
 
@@ -253,43 +274,46 @@ def _import_file(
     the ``[start, end)`` windows are kept; otherwise the ``after``/``before``
     bounds are used.
     """
+    if job is None:
+        job = get_import_job()
     batch = []
     for record in _iter_records(ssh, path):
-        import_job.lines += 1
+        job.lines += 1
         stripped = record.strip()
         if not stripped:
             continue
         result = parse_message(stripped)
         event = result.event
         if event is None or event.event_time is None:
-            import_job.invalid += 1
+            job.invalid += 1
             continue
         when = event.event_time
         if windows is not None:
             if not any(start < when < end for start, end in windows):
-                import_job.skipped += 1
+                job.skipped += 1
                 continue
         elif (after is not None and when <= after) or (before is not None and when >= before):
-            import_job.skipped += 1
+            job.skipped += 1
             continue
         batch.append(event)
-        import_job.parsed += 1
+        job.parsed += 1
         if len(batch) >= BATCH_SIZE:
             repo.insert_events(batch)
-            import_job.inserted += len(batch)
+            job.inserted += len(batch)
             batch = []
             # Yield the CPU between batches so a large backfill does not peg a
             # core on low-power firewalls/servers.
             time.sleep(0.05)
     if batch:
         repo.insert_events(batch)
-        import_job.inserted += len(batch)
+        job.inserted += len(batch)
 
 
 def run_import(
     full: bool = False,
     until: datetime | None = None,
     max_days: int | None = None,
+    instance_id: str | None = None,
 ) -> dict:
     """Scan the recent OPNsense filter log files and import what is missing.
 
@@ -303,12 +327,13 @@ def run_import(
     ``max_days`` limits the scan to the last N days (0 or ``None`` = no limit).
     Ignored when ``full`` is set.
     """
-    import_job.begin()
+    job = get_import_job(instance_id)
+    job.begin()
     try:
-        ssh = _build_ssh()
-        repo = EventRepository()
+        ssh = _build_ssh(instance_id)
+        repo = EventRepository(instance_id=instance_id)
         files = _list_log_files(ssh)
-        import_job.files_total = len(files)
+        job.files_total = len(files)
         logger.info("Filter log import: %d file(s) found", len(files))
         # In gap mode we only fill the downtime window: it starts at the newest
         # stored event and ends at ``until`` (first event received after boot) or
@@ -333,18 +358,18 @@ def run_import(
         if not full and max_days and max_days > 0:
             cutoff = now - timedelta(days=int(max_days))
         for path in files:
-            import_job.current_file = path
+            job.current_file = path
             day = _file_day(path)
             if full or day is None:
-                _import_file(repo, ssh, path)
-                import_job.files_imported += 1
-                import_job.files_scanned += 1
+                _import_file(repo, ssh, path, job=job)
+                job.files_imported += 1
+                job.files_scanned += 1
                 continue
             start, end = _day_window(day)
             if overall is None or (cutoff is not None and end <= cutoff):
                 # Empty DB (fresh install) or day outside the scan limit.
-                import_job.files_skipped += 1
-                import_job.files_scanned += 1
+                job.files_skipped += 1
+                job.files_scanned += 1
                 continue
             # Start at the newest stored event (bounded by ``until`` in startup
             # mode) so already-persisted records are never imported a second
@@ -354,44 +379,46 @@ def run_import(
             window_start = max(start, lower)
             window_end = min(end, upper)
             if window_start >= window_end:
-                import_job.files_skipped += 1
-                import_job.files_scanned += 1
+                job.files_skipped += 1
+                job.files_scanned += 1
                 continue
-            _import_file(repo, ssh, path, windows=[(window_start, window_end)])
-            import_job.files_imported += 1
-            import_job.files_scanned += 1
+            _import_file(repo, ssh, path, windows=[(window_start, window_end)], job=job)
+            job.files_imported += 1
+            job.files_scanned += 1
         if not full:
             # Record that we are up to date so the next restart only re-scans
             # the downtime window.
             try:
-                set_last_run(upper)
+                set_last_run(upper, instance_id=instance_id)
             except Exception:  # noqa: BLE001 - heartbeat must not fail the job
                 logger.exception("Could not persist import heartbeat")
         logger.info(
             "Filter log import done: %d file(s), %d line(s), %d inserted",
-            import_job.files_imported,
-            import_job.lines,
-            import_job.inserted,
+            job.files_imported,
+            job.lines,
+            job.inserted,
         )
-        import_job.finish()
+        job.finish()
     except Exception as exc:  # noqa: BLE001 - background job must not raise
         logger.exception("Filter log import failed")
-        import_job.finish(str(exc))
-    return import_job.snapshot()
+        job.finish(str(exc))
+    return job.snapshot()
 
 
 def start_import(
     full: bool = False,
     until: datetime | None = None,
     max_days: int | None = None,
+    instance_id: str | None = None,
 ) -> bool:
     """Start the import in a background thread. Returns False if already running."""
-    with import_job._lock:
-        if import_job.running:
+    job = get_import_job(instance_id)
+    with job._lock:
+        if job.running:
             return False
     thread = threading.Thread(
         target=run_import,
-        kwargs={"full": full, "until": until, "max_days": max_days},
+        kwargs={"full": full, "until": until, "max_days": max_days, "instance_id": instance_id},
         name="filterlog-import",
         daemon=True,
     )

@@ -124,7 +124,7 @@ def test_parse_mixed_dump():
 
 def test_resolver_prefers_dhcp_lease(tmp_path, monkeypatch):
     database = Database(str(tmp_path / "dhcp.duckdb"))
-    monkeypatch.setattr(hn, "get_database", lambda: database)
+    monkeypatch.setattr(hn, "get_database", lambda *a, **k: database)
     database.execute_write(
         'INSERT INTO dhcp_leases ("ip", "hostname", "mac", "source", "updated_at") '
         "VALUES ('192.168.1.100', 'laptop', 'aa:bb:cc:dd:ee:ff', 'kea', now())"

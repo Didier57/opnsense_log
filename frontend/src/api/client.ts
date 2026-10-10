@@ -5,6 +5,7 @@ import type {
   FirewallEvent,
   FilterlogImportStatus,
   GeoItem,
+  Instance,
   OpnsenseInterface,
   OpnsenseRule,
   Overview,
@@ -27,6 +28,20 @@ export function setToken(token: string | null): void {
   else localStorage.removeItem(TOKEN_KEY);
 }
 
+let _instance: string | null = null;
+
+export function setCurrentInstance(id: string | null): void {
+  _instance = id;
+}
+
+// Append the selected instance to every request. Global endpoints simply
+// ignore the extra query parameter, so this is safe everywhere.
+function withInstance(path: string): string {
+  if (!_instance) return path;
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}instance=${encodeURIComponent(_instance)}`;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (!headers.has("Content-Type") && init.body) {
@@ -34,7 +49,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const response = await fetch(path, { ...init, headers });
+  const response = await fetch(withInstance(path), { ...init, headers });
   if (response.status === 401) {
     setToken(null);
     throw new Error("unauthorized");
@@ -55,6 +70,20 @@ export const api = {
     }),
   logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
   me: () => request<{ username: string; auth_enabled: boolean }>("/api/auth/me"),
+
+  instances: () => request<{ items: Instance[] }>("/api/instances"),
+  createInstance: (payload: Record<string, unknown>) =>
+    request<{ ok: boolean; instance: Instance }>("/api/instances", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateInstance: (id: string, payload: Record<string, unknown>) =>
+    request<{ ok: boolean; instance: Instance }>(`/api/instances/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  deleteInstance: (id: string) =>
+    request<{ ok: boolean }>(`/api/instances/${id}`, { method: "DELETE" }),
 
   health: () => request<{ status: string }>("/api/health"),
   monitoring: () =>
@@ -257,7 +286,7 @@ export const api = {
     const headers = new Headers({ "Content-Type": "application/json" });
     const token = getToken();
     if (token) headers.set("Authorization", `Bearer ${token}`);
-    const response = await fetch(`/api/export?fmt=${format}`, {
+    const response = await fetch(withInstance(`/api/export?fmt=${format}`), {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
@@ -270,7 +299,10 @@ export const api = {
 export function liveSocketUrl(): string {
   const proto = window.location.protocol === "https:" ? "wss" : "ws";
   const token = getToken();
-  const suffix = token ? `?token=${encodeURIComponent(token)}` : "";
+  const params = new URLSearchParams();
+  if (token) params.set("token", token);
+  if (_instance) params.set("instance", _instance);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
   return `${proto}://${window.location.host}/api/live/ws${suffix}`;
 }
 
