@@ -125,19 +125,30 @@ def overview(
     repo = EventRepository(instance_id=instance)
     started = time.perf_counter()
     src = repo.top_with_blocked("src_ip", start, end, 500)
+    _note("overview.src", started)
+    marker = time.perf_counter()
     dst = repo.top_values("dst_ip", start, end, 500)
+    _note("overview.dst", marker)
     blocked_counts = {item["value"]: item["blocked"] for item in src if item.get("value")}
     src_external = [item for item in src if not _is_internal(item.get("value"))][:10]
     src_internal = [item for item in src if _is_internal(item.get("value"))][:10]
     dst_external = [item for item in dst if not _is_internal(item.get("value"))][:10]
     dst_internal = [item for item in dst if _is_internal(item.get("value"))][:10]
 
+    marker = time.perf_counter()
+    countries = _aggregate_countries(src, 10, instance, blocked_counts)
+    _note("overview.countries", marker)
+    marker = time.perf_counter()
+    dst_countries = _aggregate_countries(dst, 10, instance)
+    _note("overview.dst_countries", marker)
+    marker = time.perf_counter()
+    countries_blocked = _aggregate_countries(src, 10, instance, blocked_counts, sort_by="blocked")
+    _note("overview.countries_blocked", marker)
+    marker = time.perf_counter()
     result = {
-        "countries": _aggregate_countries(src, 10, instance, blocked_counts),
-        "dst_countries": _aggregate_countries(dst, 10, instance),
-        "countries_blocked": _aggregate_countries(
-            src, 10, instance, blocked_counts, sort_by="blocked"
-        ),
+        "countries": countries,
+        "dst_countries": dst_countries,
+        "countries_blocked": countries_blocked,
         "src_external": src_external,
         "src_internal": src_internal,
         "dst_external": dst_external,
@@ -157,6 +168,7 @@ def overview(
         "protocols": repo.top_values("protocol", start, end, 10),
         "rules": repo.top_values("rule_id", start, end, 10),
     }
+    _note("overview.tops", marker)
     _note("overview", started)
     return result
 

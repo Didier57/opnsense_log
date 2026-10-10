@@ -200,24 +200,6 @@ async def _blocking_reconcile_once() -> None:
             logger.exception("Startup blocking reconciliation failed (%s)", iid)
 
 
-async def _ensure_indexes_once() -> None:
-    """Build the event_time index on every instance DB (idempotent, best effort).
-
-    Helps range statistics queries and the Live view's ORDER BY. Built in the
-    background so a large table does not delay startup.
-    """
-    from .storage.database import get_database
-
-    await asyncio.sleep(10)
-    for inst in _instances():
-        iid = inst["id"]
-        try:
-            await asyncio.to_thread(get_database(iid).ensure_event_index)
-            logger.info("Event index ready (%s)", iid)
-        except Exception:  # noqa: BLE001
-            logger.exception("Could not build event index (%s)", iid)
-
-
 def _diagnose_instance(instance_id: str) -> dict:
     """Collect size/timing evidence to locate statistics slowness.
 
@@ -341,7 +323,6 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(_startup_filterlog_import_loop(), name="filterlog-import"),
         asyncio.create_task(_filterlog_heartbeat_loop(), name="filterlog-heartbeat"),
         asyncio.create_task(_blocking_reconcile_once(), name="blocking-reconcile"),
-        asyncio.create_task(_ensure_indexes_once(), name="ensure-indexes"),
         asyncio.create_task(_diagnose_once(), name="diagnose"),
     ]
     yield

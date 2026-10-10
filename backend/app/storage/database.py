@@ -216,6 +216,10 @@ class Database:
             # Lightweight migrations for databases created by older versions.
             for statement in (
                 'ALTER TABLE blocked_ips ADD COLUMN IF NOT EXISTS "hits" INTEGER',
+                # The event_time index made DuckDB pick a pathological plan for
+                # range-filtered aggregations; drop it. Day-range pruning works
+                # fine without it (startup diagnostics: day COUNT ~0.004s).
+                'DROP INDEX IF EXISTS "idx_events_event_time"',
             ):
                 try:
                     self._write_conn.execute(statement)
@@ -257,16 +261,6 @@ class Database:
         # Each read uses its own cursor (connection) so reads can run while a
         # write transaction is active on the primary connection.
         return self._write_conn.cursor().execute(sql, params or [])
-
-    def ensure_event_index(self) -> None:
-        """Create the event_time index (idempotent, best effort)."""
-        with self._write_lock:
-            try:
-                self._write_conn.execute(
-                    'CREATE INDEX IF NOT EXISTS "idx_events_event_time" ON events ("event_time")'
-                )
-            except Exception:  # noqa: BLE001 - index creation must never break startup
-                pass
 
     def close(self) -> None:
         self._write_conn.close()
