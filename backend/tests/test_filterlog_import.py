@@ -186,6 +186,25 @@ def test_run_import_until_caps_window(database, monkeypatch):
     assert repo.count() == 2
 
 
+def test_run_import_ignores_events_stored_after_until(database, monkeypatch):
+    path = "/var/log/filter/filter_20261006.log"
+    repo = EventRepository()
+    # 07:00 was stored before shutdown; 10:00 was already persisted by live
+    # syslog after the restart (i.e. after ``until``).
+    seed = FakeSSH([], {f"cat {path}": [LINE_07H, LINE_10H]})
+    fi.import_job._reset_run()
+    fi._import_file(repo, seed, path, None, None)
+    assert repo.count() == 2
+    ssh = FakeSSH([path], {f"cat {path}": [LINE_07H, LINE_08H, LINE_10H]})
+    monkeypatch.setattr(fi, "_build_ssh", lambda: ssh)
+    # until=08:30 must still recover the 08:00 gap even though a 10:00 event is
+    # already stored: that newer event must not collapse the window to nothing.
+    result = fi.run_import(until=datetime(2026, 10, 6, 8, 30, tzinfo=timezone.utc))
+    assert result["error"] is None
+    assert result["inserted"] == 1
+    assert repo.count() == 3
+
+
 def test_run_import_does_not_recover_old_missing_day(database, monkeypatch):
     day6 = "/var/log/filter/filter_20261006.log"
     day5 = "/var/log/filter/filter_20261005.log"

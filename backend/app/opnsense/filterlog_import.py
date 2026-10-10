@@ -151,6 +151,14 @@ def _global_max_event_time(repo: EventRepository) -> datetime | None:
     return row[0] if row else None
 
 
+def _max_event_time_before(repo: EventRepository, before: datetime) -> datetime | None:
+    """Newest stored event strictly older than ``before``."""
+    row = repo.db.execute_read(
+        'SELECT MAX("event_time") FROM events WHERE "event_time" < ?', [before]
+    ).fetchone()
+    return row[0] if row else None
+
+
 def last_run() -> datetime | None:
     """Last recorded heartbeat (when the app was known to be up)."""
     return _get_last_run(EventRepository())
@@ -303,13 +311,21 @@ def run_import(
         import_job.files_total = len(files)
         logger.info("Filter log import: %d file(s) found", len(files))
         # In gap mode we only fill the downtime window: it starts at the newest
-        # stored event (nothing newer has been persisted by syslog) and ends at
-        # ``until`` (first event received after boot) or now. Each day file is
-        # intersected with it, so gaps sitting in the middle of a day are filled
-        # too, while days already covered are never read. Only the last
-        # ``max_days`` days are considered so the scan stays cheap and never
-        # freezes the live view; older days are left to the manual full backfill.
-        overall = None if full else _global_max_event_time(repo)
+        # stored event and ends at ``until`` (first event received after boot) or
+        # now. Each day file is intersected with it, so gaps sitting in the middle
+        # of a day are filled too, while days already covered are never read. Only
+        # the last ``max_days`` days are considered so the scan stays cheap and
+        # never freezes the live view; older days are left to the manual backfill.
+        if full:
+            overall = None
+        elif until is not None:
+            # Live syslog kept ingesting events while we waited for reception to
+            # resume, so those (newer than ``until``) must NOT raise the lower
+            # bound or the downtime gap would collapse to an empty window. Only
+            # events stored before ``until`` bound the gap from below.
+            overall = _max_event_time_before(repo, until)
+        else:
+            overall = _global_max_event_time(repo)
         last_run_recorded = None if full else _get_last_run(repo)
         now = datetime.now(timezone.utc)
         upper = until if (not full and until is not None) else now
@@ -330,9 +346,10 @@ def run_import(
                 import_job.files_skipped += 1
                 import_job.files_scanned += 1
                 continue
-            # Start at the newest stored event so already-persisted records are
-            # never imported a second time; the heartbeat can only push it later
-            # (when the app was up but no traffic was logged since).
+            # Start at the newest stored event (bounded by ``until`` in startup
+            # mode) so already-persisted records are never imported a second
+            # time; the heartbeat can only push it later (when the app was up but
+            # no traffic was logged since).
             lower = max(overall, last_run_recorded) if last_run_recorded else overall
             window_start = max(start, lower)
             window_end = min(end, upper)
