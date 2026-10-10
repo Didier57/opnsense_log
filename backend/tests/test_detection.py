@@ -180,6 +180,74 @@ def test_notification_cooldown_suppresses_duplicates(db, monkeypatch):
     assert len(calls) == 2
 
 
+def _capture_mail(monkeypatch) -> list[str]:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        deng,
+        "get_smtp_settings",
+        lambda mask_password=False: {"smtp_enabled": True, "smtp_host": "h", "smtp_to": "a@b.c"},
+    )
+    monkeypatch.setattr(
+        deng,
+        "send_email",
+        lambda subject, body, settings=None, html=None: (calls.append(subject), {"ok": True, "message": "sent"})[1],
+    )
+    return calls
+
+
+def test_notify_skips_alert_already_blocked(db, monkeypatch):
+    calls = _capture_mail(monkeypatch)
+    alert = {
+        "id": "bruteforce:1.2.3.4:1",
+        "rule": "bruteforce",
+        "severity": "critical",
+        "src_ip": "1.2.3.4",
+        "title": "t",
+        "message": "m",
+        "details": {},
+    }
+    deng._notify([alert], {"detection_notify_cooldown_min": 0}, {"1.2.3.4"})
+    assert calls == []
+
+
+def test_notify_skips_alert_blocked_by_other_plugin(db, monkeypatch):
+    calls = _capture_mail(monkeypatch)
+    monkeypatch.setattr(
+        "app.detection.blocking_store.get_blocking_settings",
+        lambda: {"blocking_alias": "BLOCK_IP"},
+    )
+    alert = {
+        "id": "bruteforce:1.2.3.4:1",
+        "rule": "bruteforce",
+        "severity": "critical",
+        "src_ip": "1.2.3.4",
+        "title": "t",
+        "message": "m",
+        "details": {"rule_label": "Block GeoIP FREE"},
+    }
+    deng._notify([alert], {"detection_notify_cooldown_min": 0})
+    assert calls == []
+
+
+def test_notify_sends_alert_blocked_by_own_alias(db, monkeypatch):
+    calls = _capture_mail(monkeypatch)
+    monkeypatch.setattr(
+        "app.detection.blocking_store.get_blocking_settings",
+        lambda: {"blocking_alias": "BLOCK_IP"},
+    )
+    alert = {
+        "id": "bruteforce:1.2.3.4:1",
+        "rule": "bruteforce",
+        "severity": "critical",
+        "src_ip": "1.2.3.4",
+        "title": "t",
+        "message": "m",
+        "details": {"rule_label": "BLOCK_IP"},
+    }
+    deng._notify([alert], {"detection_notify_cooldown_min": 0})
+    assert len(calls) == 1
+
+
 def test_disabled_detection_returns_nothing(db):
     _raise_thresholds()
     dstore.update_detection_settings({"detection_enabled": False})

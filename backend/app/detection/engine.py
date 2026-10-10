@@ -385,10 +385,7 @@ def run_cycle() -> list[dict]:
         except Exception:  # noqa: BLE001
             logger.exception("Could not store alert %s", alert.get("id"))
 
-    if new_alerts:
-        logger.info("Detection raised %d new alert(s)", len(new_alerts))
-        _notify(new_alerts, cfg)
-
+    blocked_by_us: set[str] = set()
     try:
         from ..opnsense.blocker import block_alerts, prune_expired
         from .blocking_store import get_blocking_settings
@@ -396,11 +393,16 @@ def run_cycle() -> list[dict]:
         bcfg = get_blocking_settings()
         if bcfg.get("blocking_enabled") and bcfg.get("blocking_mode") == "auto" and new_alerts:
             result = block_alerts(new_alerts)
-            if result.get("added"):
-                logger.info("Auto-blocked %d IP(s): %s", len(result["added"]), result["added"])
+            blocked_by_us = {ip for ip in (result.get("added") or []) if ip}
+            if blocked_by_us:
+                logger.info("Auto-blocked %d IP(s): %s", len(blocked_by_us), sorted(blocked_by_us))
         prune_expired()
     except Exception:  # noqa: BLE001
         logger.exception("Blocking step failed")
+
+    if new_alerts:
+        logger.info("Detection raised %d new alert(s)", len(new_alerts))
+        _notify(new_alerts, cfg, blocked_by_us)
 
     return new_alerts
 
@@ -472,7 +474,30 @@ def _alerts_html(alerts: list[dict]) -> str:
     )
 
 
-def _notify(alerts: list[dict], cfg: dict) -> None:
+def _notify(alerts: list[dict], cfg: dict, blocked_by_us: set[str] | None = None) -> None:
+    # Skip alerts already covered by a block e-mail (the app just blocked the IP)
+    # or handled by another plugin (the blocking rule is not our own alias), so
+    # the alert digest never duplicates a blocking notification.
+    blocked_by_us = blocked_by_us or set()
+    try:
+        from .blocking_store import get_blocking_settings
+
+        own_alias = str(get_blocking_settings().get("blocking_alias") or "").strip().lower()
+    except Exception:  # noqa: BLE001
+        own_alias = ""
+
+    def _handled(alert: dict) -> bool:
+        ip = alert.get("src_ip") or ""
+        if ip and ip in blocked_by_us:
+            return True
+        label = str(alert.get("details", {}).get("rule_label") or "").strip().lower()
+        return bool(label and own_alias and label != own_alias)
+
+    alerts = [a for a in alerts if not _handled(a)]
+    if not alerts:
+        logger.info("Alert e-mail skipped: every alert is already handled by a blocking")
+        return
+
     try:
         smtp = get_smtp_settings(mask_password=False)
     except Exception:  # noqa: BLE001
