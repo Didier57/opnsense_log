@@ -40,7 +40,12 @@ def top(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def _aggregate_countries(items: list[dict], limit: int, instance: str | None = None) -> list[dict]:
+def _aggregate_countries(
+    items: list[dict],
+    limit: int,
+    instance: str | None = None,
+    blocked_counts: dict[str, int] | None = None,
+) -> list[dict]:
     resolved = geo_resolver.resolve(
         [item["value"] for item in items if item.get("value")], instance_id=instance
     )
@@ -54,6 +59,10 @@ def _aggregate_countries(items: list[dict], limit: int, instance: str | None = N
             code, {"value": code, "name": info.get("name") or code, "count": 0}
         )
         entry["count"] += item["count"]
+        if blocked_counts is not None:
+            blocked = blocked_counts.get(item["value"], 0)
+            entry["blocked"] = entry.get("blocked", 0) + blocked
+            entry["passed"] = entry.get("passed", 0) + max(0, item["count"] - blocked)
     return sorted(totals.values(), key=lambda entry: entry["count"], reverse=True)[:limit]
 
 
@@ -65,10 +74,16 @@ def countries(
     instance: str | None = InstanceId,
     user: str = Depends(require_user),
 ) -> dict:
-    """Top countries of the source IPs (GeoIP resolved)."""
+    """Top countries of the source IPs (GeoIP resolved).
+
+    Each item also carries the ``passed``/``blocked`` split so the UI can colour
+    the bar by outcome.
+    """
     repo = EventRepository(instance_id=instance)
     ips = repo.top_values("src_ip", start, end, 500)
-    return {"items": _aggregate_countries(ips, limit, instance)}
+    blocked = repo.top_values("src_ip", start, end, 500, actions=["block", "reject"])
+    blocked_counts = {item["value"]: item["count"] for item in blocked if item.get("value")}
+    return {"items": _aggregate_countries(ips, limit, instance, blocked_counts)}
 
 
 def _is_internal(value: object) -> bool:

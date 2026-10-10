@@ -110,6 +110,8 @@ export interface GeoItem {
   value: string;
   name: string;
   count: number;
+  passed?: number;
+  blocked?: number;
 }
 
 export interface Overview {

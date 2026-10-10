@@ -32,7 +32,14 @@ export function Analysis() {
       api
         .countries(start, end, 25)
         .then((r) =>
-          setItems(r.items.map((it) => ({ value: `${it.name} (${it.value})`, count: it.count }))),
+          setItems(
+            r.items.map((it) => ({
+              value: `${it.name} (${it.value})`,
+              count: it.count,
+              passed: it.passed,
+              blocked: it.blocked,
+            })),
+          ),
         )
         .catch(() => undefined);
     } else if (kind && DIMENSIONS[kind]) {
