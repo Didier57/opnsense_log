@@ -80,11 +80,7 @@ class EventRepository:
         return len(rows)
 
     def delete_older_than(self, cutoff: datetime) -> int:
-        result = self.db.execute_write(
-            "DELETE FROM events WHERE event_time < ? RETURNING 1", [cutoff]
-        )
-        rows = result.fetchall()
-        return len(rows)
+        return self.db.delete_events_before(cutoff)
 
     def count(self) -> int:
         return self.db.execute_read("SELECT COUNT(*) FROM events").fetchone()[0]

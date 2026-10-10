@@ -228,6 +228,23 @@ class Database:
         with self._write_lock:
             self._write_conn.executemany(sql, rows)
 
+    def delete_events_before(self, cutoff) -> int:
+        """Delete events older than ``cutoff`` and return the number removed.
+
+        The count and the DELETE run under the write lock so a concurrent insert
+        on the shared write connection cannot close the result in between (which
+        triggered ``InvalidInputException: result closed``).
+        """
+        with self._write_lock:
+            count = self._write_conn.execute(
+                'SELECT COUNT(*) FROM events WHERE "event_time" < ?', [cutoff]
+            ).fetchone()[0]
+            if count:
+                self._write_conn.execute(
+                    'DELETE FROM events WHERE "event_time" < ?', [cutoff]
+                )
+            return int(count)
+
     def execute_read(self, sql: str, params: list | None = None):
         # Each read uses its own cursor (connection) so reads can run while a
         # write transaction is active on the primary connection.

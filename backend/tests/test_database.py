@@ -37,3 +37,14 @@ def test_compact_events_is_idempotent(tmp_path):
     assert db.compact_events() == 1
     assert db.compact_events() == 1
     db.close()
+
+
+def test_delete_events_before_returns_count(tmp_path):
+    db = Database(str(tmp_path / "retention.duckdb"))
+    repo = EventRepository(db)
+    repo.insert_events([_event(h) for h in (48, 30, 2, 1, 0)])
+
+    assert repo.delete_older_than(BASE - timedelta(hours=24)) == 2
+    assert repo.count() == 3
+    assert repo.delete_older_than(BASE - timedelta(hours=24)) == 0
+    db.close()
