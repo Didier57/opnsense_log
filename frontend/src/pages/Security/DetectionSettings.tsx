@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api/client";
 import { formatDateTime } from "../../format";
-import type { BlockedIp } from "../../types";
+import type { AllowlistEntry, BlockedIp } from "../../types";
 
 interface DetectionForm {
   detection_enabled: boolean;
@@ -85,6 +85,9 @@ export function DetectionSettings() {
   const [form, setForm] = useState<DetectionForm>(DEFAULT_FORM);
   const [blocking, setBlocking] = useState<BlockingForm>(DEFAULT_BLOCKING);
   const [blocked, setBlocked] = useState<BlockedIp[]>([]);
+  const [allowlist, setAllowlist] = useState<AllowlistEntry[]>([]);
+  const [allowItems, setAllowItems] = useState("");
+  const [allowNote, setAllowNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -120,6 +123,12 @@ export function DetectionSettings() {
       .then((data) => setBlocked(data.items))
       .catch(() => undefined);
 
+  const loadAllowlist = () =>
+    api
+      .allowlist()
+      .then((data) => setAllowlist(data.items))
+      .catch(() => undefined);
+
   const load = () =>
     api
       .detectionSettings()
@@ -149,6 +158,7 @@ export function DetectionSettings() {
     load();
     loadBlocking();
     loadBlocked();
+    loadAllowlist();
   }, []);
 
   const save = async () => {
@@ -233,6 +243,40 @@ export function DetectionSettings() {
       if (!result.ok) throw new Error(result.error || "Échec du retrait");
       setBlockMessage(`${ip} retirée.`);
       loadBlocked();
+    } catch (e) {
+      setBlockError(String(e));
+    }
+  };
+
+  const addAllow = async () => {
+    setBlockMessage("");
+    setBlockError("");
+    const tokens = allowItems
+      .split(/[\s,;]+/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+    if (!tokens.length) {
+      setBlockError("Saisissez au moins une IP ou un réseau CIDR.");
+      return;
+    }
+    try {
+      const result = await api.addAllowlist(tokens, allowNote);
+      setAllowlist(result.items);
+      setBlockMessage(`${result.added.length} entrée(s) ajoutée(s) à la liste blanche.`);
+      setAllowItems("");
+      setAllowNote("");
+    } catch (e) {
+      setBlockError(String(e));
+    }
+  };
+
+  const removeAllow = async (ip: string) => {
+    setBlockMessage("");
+    setBlockError("");
+    try {
+      const result = await api.removeAllowlist([ip]);
+      setAllowlist(result.items);
+      setBlockMessage(`${ip} retirée de la liste blanche.`);
     } catch (e) {
       setBlockError(String(e));
     }
@@ -460,6 +504,67 @@ export function DetectionSettings() {
                         title="Retirer cette IP de l'alias et de la liste"
                         onClick={() => unblockIp(row.ip)}
                       >
+                        Retirer
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div className="panel">
+        <h3 style={{ marginTop: 0 }}>Liste blanche (IP de confiance)</h3>
+        <p className="muted" style={{ fontSize: 12 }}>
+          Les IP et réseaux CIDR listés ici ne déclenchent <strong>jamais d'alerte</strong> et ne sont
+          <strong> jamais bloqués</strong>. Utile pour vos serveurs de sauvegarde, sondes de supervision ou
+          partenaires de confiance.
+        </p>
+        <div className="grid-2">
+          <label className="muted" style={{ fontSize: 12 }}>
+            IP ou CIDR (séparés par des virgules, espaces ou retours à la ligne)
+            <br />
+            <textarea
+              rows={2}
+              style={{ width: "100%" }}
+              value={allowItems}
+              onChange={(e) => setAllowItems(e.target.value)}
+              placeholder="192.168.1.10, 10.0.0.0/8, 2001:db8::1"
+            />
+          </label>
+          <label className="muted" style={{ fontSize: 12 }}>
+            Note (optionnelle)
+            <br />
+            <input
+              style={{ width: "100%" }}
+              value={allowNote}
+              onChange={(e) => setAllowNote(e.target.value)}
+              placeholder="Ex. serveur de sauvegarde"
+            />
+          </label>
+        </div>
+        <button onClick={addAllow}>Ajouter à la liste blanche</button>
+        {allowlist.length > 0 && (
+          <div className="table-scroll" style={{ maxHeight: 200, marginTop: 12 }}>
+            <table className="log-table">
+              <thead>
+                <tr>
+                  <th>IP / CIDR</th>
+                  <th>Note</th>
+                  <th>Ajoutée</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {allowlist.map((row) => (
+                  <tr key={row.ip}>
+                    <td className="mono">{row.ip}</td>
+                    <td>{row.note || "—"}</td>
+                    <td className="mono">{row.added_at ? formatDateTime(row.added_at) : "—"}</td>
+                    <td>
+                      <button title="Retirer de la liste blanche" onClick={() => removeAllow(row.ip)}>
                         Retirer
                       </button>
                     </td>

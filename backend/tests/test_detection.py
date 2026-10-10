@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+import app.detection.allowlist_store as alstore
 import app.detection.engine as deng
 import app.detection.store as dstore
 import app.notifications.store as nstore
@@ -19,6 +20,7 @@ def db(tmp_path, monkeypatch):
     monkeypatch.setattr(dstore, "get_database", lambda: database)
     monkeypatch.setattr(deng, "get_database", lambda: database)
     monkeypatch.setattr(nstore, "get_database", lambda: database)
+    monkeypatch.setattr(alstore, "get_database", lambda: database)
     return database
 
 
@@ -79,6 +81,14 @@ def test_bruteforce_service_alert(db):
     assert any(a["rule"] == "bruteforce_service" for a in alerts)
 
 
+def test_allowlisted_source_is_ignored(db):
+    _raise_thresholds(detection_bruteforce_count=3)
+    alstore.add_allowlist(["1.2.3.4"])
+    EventRepository(db).insert_events([_event(action="block") for _ in range(3)])
+    alerts = deng.run_cycle()
+    assert not any(a["rule"] == "bruteforce" for a in alerts)
+
+
 def test_horizontal_scan_alert(db):
     _raise_thresholds(
         detection_portscan_ports=100000,
@@ -131,7 +141,7 @@ def test_notification_cooldown_suppresses_duplicates(db, monkeypatch):
     monkeypatch.setattr(
         deng,
         "send_email",
-        lambda subject, body, settings=None: (calls.append(subject), {"ok": True, "message": "sent"})[1],
+        lambda subject, body, settings=None, html=None: (calls.append(subject), {"ok": True, "message": "sent"})[1],
     )
     cfg = {"detection_notify_cooldown_min": 60}
     first = {

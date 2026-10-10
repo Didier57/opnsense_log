@@ -11,6 +11,7 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from ..storage.database import get_database
+from ..detection.allowlist_store import allowlist_nets
 from ..detection.blocking_store import get_blocking_settings, set_detected_skip_tables
 from ..notifications.blocking_mail import send_block_notification
 from .api_client import APIError, OPNsenseAPI
@@ -117,7 +118,7 @@ def detect_block_tables() -> list[str]:
             password=cfg.get("opnsense_password"),
             key_path=cfg["opnsense_key_path"],
         )
-        output = ssh.run("pfctl -sTables 2>/dev/null")
+        output = ssh.run("sh -c 'pfctl -sTables 2>/dev/null'")
     except SSHError as exc:
         logger.warning("Could not list pf tables: %s", exc)
         return []
@@ -188,11 +189,12 @@ def _record_blocked(
     ttl_hours: int,
     escalate: bool = False,
     max_hours: int = 0,
-) -> None:
+) -> dict[str, dict]:
     if not ips:
-        return
+        return {}
     db = get_database()
     now = datetime.now(timezone.utc)
+    records: dict[str, dict] = {}
     for ip in ips:
         row = db.execute_read('SELECT "hits" FROM blocked_ips WHERE "ip" = ?', [ip]).fetchone()
         hits = (int(row[0]) if row and row[0] is not None else 0) + 1
@@ -210,6 +212,8 @@ def _record_blocked(
             '"hits" = excluded."hits"',
             [ip, rule, source, expires, hits],
         )
+        records[ip] = {"hits": hits, "expires_at": expires}
+    return records
 
 
 def apply_ips(ips: list[str], rule: str = "", source: str = "manual", reasons: dict | None = None) -> dict:
@@ -219,6 +223,7 @@ def apply_ips(ips: list[str], rule: str = "", source: str = "manual", reasons: d
     if not alias:
         return {"ok": False, "error": "Aucun alias de blocage configuré", "added": []}
     nets = _whitelist_nets(cfg.get("blocking_whitelist", ""))
+    nets += allowlist_nets()
 
     wanted: list[str] = []
     for raw in ips:
@@ -272,7 +277,7 @@ def apply_ips(ips: list[str], rule: str = "", source: str = "manual", reasons: d
     except APIError as exc:
         return {"ok": False, "error": str(exc), "added": []}
 
-    _record_blocked(
+    records = _record_blocked(
         added,
         rule,
         source,
@@ -287,6 +292,7 @@ def apply_ips(ips: list[str], rule: str = "", source: str = "manual", reasons: d
                 rule=rule,
                 reasons=reasons,
                 days=int(cfg.get("blocking_token_days", 7) or 7),
+                details=records,
             )
         except Exception:  # noqa: BLE001 - never fail a block because of e-mail
             logger.exception("Could not send block notification")

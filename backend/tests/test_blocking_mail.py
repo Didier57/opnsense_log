@@ -40,6 +40,31 @@ def test_block_notification_includes_unblock_link(monkeypatch):
     assert "Scan de ports" in captured["html"]
 
 
+def test_block_notification_includes_hits_and_expiry(monkeypatch):
+    captured = {}
+
+    def fake_send(subject, body, settings=None, html=None):
+        captured["body"] = body
+        captured["html"] = html
+        return {"ok": True, "message": "sent"}
+
+    monkeypatch.setattr(bm, "get_public_url", lambda: "https://logs.example.com")
+    monkeypatch.setattr(bm, "send_email", fake_send)
+
+    from datetime import datetime, timezone
+
+    expires = datetime(2026, 10, 11, 12, 0, tzinfo=timezone.utc)
+    bm.send_block_notification(
+        ["1.2.3.4"],
+        rule="bruteforce_service",
+        details={"1.2.3.4": {"hits": 3, "expires_at": expires}},
+    )
+
+    assert "Force brute sur un service" in captured["html"]
+    assert "blocages : 3" in captured["body"]
+    assert "11/10/2026 12:00 UTC" in captured["body"]
+
+
 def test_block_notification_without_public_url(monkeypatch):
     captured = {}
 

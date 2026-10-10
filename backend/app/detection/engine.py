@@ -8,6 +8,7 @@ single digest e-mail is sent per cycle containing the newly raised alerts.
 from __future__ import annotations
 
 import asyncio
+import html as html_lib
 import ipaddress
 import json
 import logging
@@ -51,7 +52,15 @@ def _is_internal(ip: str) -> bool:
     )
 
 
-def _skip_source(cfg: dict, src_ip: str) -> bool:
+def _skip_source(cfg: dict, src_ip: str, allow_nets: list | None = None) -> bool:
+    """True when a source must never raise an alert (trusted/internal)."""
+    if allow_nets:
+        try:
+            addr = ipaddress.ip_address(src_ip)
+        except ValueError:
+            addr = None
+        if addr is not None and any(addr in net for net in allow_nets):
+            return True
     return bool(cfg.get("detection_ignore_private", True)) and _is_internal(src_ip)
 
 
@@ -92,7 +101,7 @@ def _fmt_time(value: datetime | None) -> str:
     return value.astimezone(tz).strftime("%d/%m/%Y %H:%M:%S")
 
 
-def _detect_port_scan(cfg: dict, floor: datetime | None = None) -> list[dict]:
+def _detect_port_scan(cfg: dict, floor: datetime | None = None, allow_nets: list | None = None) -> list[dict]:
     window = cfg["detection_portscan_window_sec"]
     cutoff = _window_start(window, floor)
     rows = _rows(
@@ -110,7 +119,7 @@ def _detect_port_scan(cfg: dict, floor: datetime | None = None) -> list[dict]:
     bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
     alerts = []
     for src_ip, ports, last_seen in rows:
-        if _skip_source(cfg, src_ip):
+        if _skip_source(cfg, src_ip, allow_nets):
             continue
         alerts.append(
             {
@@ -127,7 +136,7 @@ def _detect_port_scan(cfg: dict, floor: datetime | None = None) -> list[dict]:
     return alerts
 
 
-def _detect_bruteforce(cfg: dict, floor: datetime | None = None) -> list[dict]:
+def _detect_bruteforce(cfg: dict, floor: datetime | None = None, allow_nets: list | None = None) -> list[dict]:
     window = cfg["detection_bruteforce_window_sec"]
     cutoff = _window_start(window, floor)
     rows = _rows(
@@ -146,7 +155,7 @@ def _detect_bruteforce(cfg: dict, floor: datetime | None = None) -> list[dict]:
     bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
     alerts = []
     for src_ip, attempts, last_seen in rows:
-        if _skip_source(cfg, src_ip):
+        if _skip_source(cfg, src_ip, allow_nets):
             continue
         alerts.append(
             {
@@ -163,7 +172,7 @@ def _detect_bruteforce(cfg: dict, floor: datetime | None = None) -> list[dict]:
     return alerts
 
 
-def _detect_bruteforce_service(cfg: dict, floor: datetime | None = None) -> list[dict]:
+def _detect_bruteforce_service(cfg: dict, floor: datetime | None = None, allow_nets: list | None = None) -> list[dict]:
     """Repeated blocks against the same destination port (service brute-force)."""
     window = cfg["detection_bruteforce_window_sec"]
     cutoff = _window_start(window, floor)
@@ -183,7 +192,7 @@ def _detect_bruteforce_service(cfg: dict, floor: datetime | None = None) -> list
     bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
     alerts = []
     for src_ip, dst_port, attempts, last_seen in rows:
-        if _skip_source(cfg, src_ip):
+        if _skip_source(cfg, src_ip, allow_nets):
             continue
         alerts.append(
             {
@@ -205,7 +214,7 @@ def _detect_bruteforce_service(cfg: dict, floor: datetime | None = None) -> list
     return alerts
 
 
-def _detect_horizontal_scan(cfg: dict, floor: datetime | None = None) -> list[dict]:
+def _detect_horizontal_scan(cfg: dict, floor: datetime | None = None, allow_nets: list | None = None) -> list[dict]:
     """One source contacting many distinct destination hosts (network scan)."""
     window = cfg["detection_horizontalscan_window_sec"]
     cutoff = _window_start(window, floor)
@@ -224,7 +233,7 @@ def _detect_horizontal_scan(cfg: dict, floor: datetime | None = None) -> list[di
     bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
     alerts = []
     for src_ip, hosts, last_seen in rows:
-        if _skip_source(cfg, src_ip):
+        if _skip_source(cfg, src_ip, allow_nets):
             continue
         alerts.append(
             {
@@ -241,7 +250,7 @@ def _detect_horizontal_scan(cfg: dict, floor: datetime | None = None) -> list[di
     return alerts
 
 
-def _detect_spike(cfg: dict, floor: datetime | None = None) -> list[dict]:
+def _detect_spike(cfg: dict, floor: datetime | None = None, allow_nets: list | None = None) -> list[dict]:
     if not cfg.get("detection_spike_enabled", False):
         return []
     window = cfg["detection_spike_window_sec"]
@@ -301,6 +310,14 @@ def run_cycle() -> list[dict]:
     floor = _STARTED_AT if _first_cycle else None
     _first_cycle = False
 
+    try:
+        from .allowlist_store import allowlist_nets
+
+        allow_nets = allowlist_nets()
+    except Exception:  # noqa: BLE001 - allowlist must never break detection
+        logger.exception("Could not load allowlist")
+        allow_nets = []
+
     candidates: list[dict] = []
     for detector in (
         _detect_port_scan,
@@ -310,7 +327,7 @@ def run_cycle() -> list[dict]:
         _detect_spike,
     ):
         try:
-            candidates.extend(detector(cfg, floor))
+            candidates.extend(detector(cfg, floor, allow_nets))
         except Exception:  # noqa: BLE001
             logger.exception("Detection rule failed: %s", detector.__name__)
 
@@ -358,6 +375,54 @@ def _mark_notified(ids: list[str]) -> None:
     get_database().execute_write(f'UPDATE alerts SET "notified" = TRUE WHERE "id" IN ({marks})', list(ids))
 
 
+def _alerts_html(alerts: list[dict]) -> str:
+    """HTML digest of the alerts, with a link back to the app when configured."""
+    try:
+        from ..settings_store import get_public_url
+
+        base = get_public_url()
+    except Exception:  # noqa: BLE001
+        base = ""
+    rows = ""
+    for alert in alerts:
+        severity = html_lib.escape(str(alert.get("severity") or ""))
+        color = "#dc2626" if severity == "critical" else "#d97706"
+        rows += (
+            "<tr>"
+            '<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">'
+            f'<span style="color:{color};font-weight:600">{severity.upper()}</span></td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;white-space:nowrap">'
+            f'{html_lib.escape(_fmt_time(alert.get("event_time")))}</td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">{html_lib.escape(str(alert.get("title") or ""))}</td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-family:monospace">'
+            f'{html_lib.escape(str(alert.get("src_ip") or ""))}</td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">{html_lib.escape(str(alert.get("message") or ""))}</td>'
+            "</tr>"
+        )
+    link = ""
+    if base:
+        link = (
+            '<p style="margin:16px 0 0">'
+            f'<a href="{html_lib.escape(base)}">Ouvrir l\'analyseur de logs</a></p>'
+        )
+    return (
+        '<html><body style="font-family:Arial,Helvetica,sans-serif;color:#111827">'
+        '<h2 style="margin:0 0 12px">Alertes de sécurité</h2>'
+        f'<p style="margin:0 0 16px;color:#374151">{len(alerts)} nouvelle(s) alerte(s) détectée(s).</p>'
+        '<table style="border-collapse:collapse;width:100%;max-width:900px">'
+        '<thead><tr>'
+        '<th style="text-align:left;padding:8px 12px;border-bottom:2px solid #d1d5db">Gravité</th>'
+        '<th style="text-align:left;padding:8px 12px;border-bottom:2px solid #d1d5db">Date</th>'
+        '<th style="text-align:left;padding:8px 12px;border-bottom:2px solid #d1d5db">Type</th>'
+        '<th style="text-align:left;padding:8px 12px;border-bottom:2px solid #d1d5db">Source</th>'
+        '<th style="text-align:left;padding:8px 12px;border-bottom:2px solid #d1d5db">Détail</th>'
+        '</tr></thead>'
+        f"<tbody>{rows}</tbody></table>"
+        f"{link}"
+        "</body></html>"
+    )
+
+
 def _notify(alerts: list[dict], cfg: dict) -> None:
     try:
         smtp = get_smtp_settings(mask_password=False)
@@ -380,7 +445,7 @@ def _notify(alerts: list[dict], cfg: dict) -> None:
     ]
     subject = f"[OPNsense Log Analyzer] {len(to_send)} alerte(s) de sécurité"
     body = "Nouvelles alertes détectées :\n\n" + "\n".join(lines) + "\n\n-- Analyseur de logs OPNsense"
-    result = send_email(subject, body, smtp)
+    result = send_email(subject, body, smtp, html=_alerts_html(to_send))
     if result.get("ok"):
         try:
             _mark_notified([a["id"] for a in to_send])

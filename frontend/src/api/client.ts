@@ -1,5 +1,6 @@
 import type {
   Alert,
+  AllowlistEntry,
   BlockedIp,
   FirewallEvent,
   FilterlogImportStatus,
@@ -216,6 +217,17 @@ export const api = {
     request<{ ok: boolean; reconciled: number; missing?: string[]; error?: string }>(
       "/api/settings/blocking/reconcile",
       { method: "POST" },
+    ),
+  allowlist: () => request<{ items: AllowlistEntry[] }>("/api/settings/blocking/allowlist"),
+  addAllowlist: (ips: string[], note: string) =>
+    request<{ ok: boolean; added: string[]; items: AllowlistEntry[] }>(
+      "/api/settings/blocking/allowlist",
+      { method: "POST", body: JSON.stringify({ ips, note }) },
+    ),
+  removeAllowlist: (ips: string[]) =>
+    request<{ ok: boolean; removed: string[]; items: AllowlistEntry[] }>(
+      "/api/settings/blocking/allowlist",
+      { method: "DELETE", body: JSON.stringify({ ips }) },
     ),
 
   alerts: (limit = 200, offset = 0) =>

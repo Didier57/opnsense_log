@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.storage.database import Database
+import app.detection.allowlist_store as als
 import app.detection.blocking_store as bs
 import app.opnsense.blocker as blocker
 
@@ -40,6 +41,7 @@ def database(tmp_path, monkeypatch):
     db = Database(str(tmp_path / "t.duckdb"))
     monkeypatch.setattr(bs, "get_database", lambda: db)
     monkeypatch.setattr(blocker, "get_database", lambda: db)
+    monkeypatch.setattr(als, "get_database", lambda: db)
     yield db
     db.close()
 
@@ -141,6 +143,24 @@ def test_apply_ips_dry_run_does_not_touch_alias(database, monkeypatch):
     assert blocker.list_blocked() == []
 
 
+def test_apply_ips_respects_allowlist(database, monkeypatch):
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg())
+    fake = FakeAPI()
+    monkeypatch.setattr(blocker, "_api", lambda: fake)
+    als.add_allowlist(["203.0.113.0/24"])
+
+    result = blocker.apply_ips(["203.0.113.5", "1.2.3.4"])
+
+    assert result["added"] == ["1.2.3.4"]
+    assert fake.rows["BLOCK"]["content"] == ["1.2.3.4"]
+
+
+def test_record_blocked_returns_details(database):
+    records = blocker._record_blocked(["1.2.3.4"], "detection", "auto", 2)
+    assert records["1.2.3.4"]["hits"] == 1
+    assert records["1.2.3.4"]["expires_at"] is not None
+
+
 def test_record_blocked_escalates_ttl(database):
     blocker._record_blocked(["1.2.3.4"], "detection", "auto", 1, escalate=True, max_hours=10)
     blocker._record_blocked(["1.2.3.4"], "detection", "auto", 1, escalate=True, max_hours=10)
@@ -227,7 +247,7 @@ def test_apply_ips_sends_block_notification(database, monkeypatch):
     monkeypatch.setattr(
         blocker,
         "send_block_notification",
-        lambda ips, rule="", reasons=None, days=7: sent.update(ips=ips, rule=rule) or {"ok": True},
+        lambda ips, rule="", reasons=None, days=7, details=None: sent.update(ips=ips, rule=rule) or {"ok": True},
     )
 
     result = blocker.apply_ips(["1.2.3.4"], rule="detection", source="auto")

@@ -161,6 +161,12 @@ CREATE TABLE IF NOT EXISTS blocked_ips (
     "expires_at" TIMESTAMPTZ,
     "hits"       INTEGER
 );
+
+CREATE TABLE IF NOT EXISTS allowlist_ips (
+    "ip"         VARCHAR PRIMARY KEY,
+    "note"       VARCHAR,
+    "added_at"   TIMESTAMPTZ
+);
 """
 
 

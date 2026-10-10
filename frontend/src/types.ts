@@ -135,6 +135,12 @@ export interface BlockedIp {
   expires_at: string | null;
 }
 
+export interface AllowlistEntry {
+  ip: string;
+  note: string;
+  added_at: string;
+}
+
 export interface FilterlogImportStatus {
   running: boolean;
   started_at: string | null;

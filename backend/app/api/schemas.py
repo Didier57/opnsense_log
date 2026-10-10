@@ -111,3 +111,12 @@ class BlockingSettings(BaseModel):
 
 class BlockRequest(BaseModel):
     ips: list[str] = Field(default_factory=list)
+
+
+class AllowlistAdd(BaseModel):
+    ips: list[str] = Field(default_factory=list)
+    note: str | None = None
+
+
+class AllowlistRemove(BaseModel):
+    ips: list[str] = Field(default_factory=list)
