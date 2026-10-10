@@ -230,6 +230,62 @@ def test_apply_ips_no_notification_on_recurrence(database, monkeypatch):
     assert called["count"] == 0
 
 
+def test_apply_ips_escalates_present_near_expiry(database, monkeypatch):
+    monkeypatch.setattr(
+        blocker,
+        "get_blocking_settings",
+        lambda *a, **k: _cfg(blocking_ttl_hours=1, blocking_escalate=True),
+    )
+    fake = FakeAPI(
+        {"BLOCK": {"uuid": "u1", "name": "BLOCK", "type": "host", "enabled": "1", "content": ["1.2.3.4"]}}
+    )
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
+    monkeypatch.setattr(blocker, "send_block_notification", lambda *a, **k: {"ok": True})
+    database.execute_write(
+        'INSERT INTO blocked_ips ("ip", "rule", "source", "added_at", "expires_at", "hits") '
+        "VALUES ('1.2.3.4', 'detection', 'auto', now(), now() + INTERVAL 2 MINUTE, 1)"
+    )
+
+    result = blocker.apply_ips(["1.2.3.4"], rule="detection", source="auto")
+
+    # Already in the alias: nothing added, but the block is renewed (doubled).
+    assert result["added"] == []
+    hits, expires = database.execute_read(
+        'SELECT "hits", "expires_at" FROM blocked_ips WHERE "ip" = ?', ["1.2.3.4"]
+    ).fetchone()
+    assert hits == 2
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    delta = expires - datetime.now(timezone.utc)
+    assert 1.5 <= delta.total_seconds() / 3600 <= 2.5
+
+
+def test_apply_ips_keeps_present_when_far_from_expiry(database, monkeypatch):
+    monkeypatch.setattr(
+        blocker,
+        "get_blocking_settings",
+        lambda *a, **k: _cfg(blocking_ttl_hours=1, blocking_escalate=True),
+    )
+    fake = FakeAPI(
+        {"BLOCK": {"uuid": "u1", "name": "BLOCK", "type": "host", "enabled": "1", "content": ["1.2.3.4"]}}
+    )
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
+    monkeypatch.setattr(blocker, "send_block_notification", lambda *a, **k: {"ok": True})
+    database.execute_write(
+        'INSERT INTO blocked_ips ("ip", "rule", "source", "added_at", "expires_at", "hits") '
+        "VALUES ('1.2.3.4', 'detection', 'auto', now(), now() + INTERVAL 30 MINUTE, 1)"
+    )
+
+    result = blocker.apply_ips(["1.2.3.4"], rule="detection", source="auto")
+
+    # Not near expiry yet: the running block is left untouched.
+    assert result["added"] == []
+    hits = database.execute_read(
+        'SELECT "hits" FROM blocked_ips WHERE "ip" = ?', ["1.2.3.4"]
+    ).fetchone()[0]
+    assert hits == 1
+
+
 def test_record_blocked_escalation_capped(database):
     blocker._record_blocked(["1.2.3.4"], "detection", "auto", 5, escalate=True, max_hours=6)
     blocker._record_blocked(["1.2.3.4"], "detection", "auto", 5, escalate=True, max_hours=6)

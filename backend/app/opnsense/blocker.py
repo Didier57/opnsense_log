@@ -202,6 +202,26 @@ def _already_blocked(ips: list[str], tables: list[str], instance_id: str | None 
 # avoid timedelta overflow when a persistent offender keeps coming back.
 _HARD_MAX_HOURS = 24 * 365 * 100  # ~100 years
 
+# When an IP we already block keeps scanning, its TTL is renewed (doubled) this
+# many minutes before the current block expires, so an active offender is never
+# freed. If it stops scanning, the block simply expires.
+_ESCALATE_LEAD_MIN = 5
+
+
+def _due_for_escalation(ips: list[str], instance_id: str | None = None) -> list[str]:
+    """Blocked IPs whose current block is about to expire (within the lead time)."""
+    if not ips:
+        return []
+    db = get_database(resolve_instance_id(instance_id))
+    marks = ", ".join("?" for _ in ips)
+    cutoff = datetime.now(timezone.utc) + timedelta(minutes=_ESCALATE_LEAD_MIN)
+    rows = db.execute_read(
+        f'SELECT "ip" FROM blocked_ips WHERE "ip" IN ({marks}) '
+        'AND "expires_at" IS NOT NULL AND "expires_at" <= ?',
+        [*ips, cutoff],
+    ).fetchall()
+    return [r[0] for r in rows]
+
 
 def _record_blocked(
     ips: list[str],
@@ -306,24 +326,33 @@ def apply_ips(ips: list[str], rule: str = "", source: str = "manual", reasons: d
             api.ensure_host_alias(alias, wanted)
             api.reconfigure()
             added = wanted
+            present: list[str] = []
         else:
             existing = set(content)
             added = [ip for ip in wanted if ip not in existing]
+            present = [ip for ip in wanted if ip in existing]
             if added:
                 api.set_alias_content(row, content + added)
                 api.reconfigure()
     except APIError as exc:
         return {"ok": False, "error": str(exc), "added": []}
 
+    ttl = int(cfg.get("blocking_ttl_hours", 0) or 0)
+    escalate = bool(cfg.get("blocking_escalate", False))
+    max_hours = int(cfg.get("blocking_ttl_max_hours", 0) or 0)
     records = _record_blocked(
-        added,
-        rule,
-        source,
-        int(cfg.get("blocking_ttl_hours", 0) or 0),
-        escalate=bool(cfg.get("blocking_escalate", False)),
-        max_hours=int(cfg.get("blocking_ttl_max_hours", 0) or 0),
-        instance_id=instance_id,
+        added, rule, source, ttl, escalate=escalate, max_hours=max_hours, instance_id=instance_id
     )
+    # An IP we already block keeps scanning: renew (double) its TTL shortly
+    # before the current block expires, so an active offender is never freed.
+    if escalate and ttl > 0 and present:
+        due = _due_for_escalation(present, instance_id)
+        if due:
+            records.update(
+                _record_blocked(
+                    due, rule, source, ttl, escalate=True, max_hours=max_hours, instance_id=instance_id
+                )
+            )
     # Only notify on the first block of an IP: a repeat offender (escalated TTL)
     # is blocked silently so a recurrence does not spam the mailbox again.
     first_time = [ip for ip in added if records.get(ip, {}).get("hits", 1) <= 1]

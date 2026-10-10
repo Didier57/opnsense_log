@@ -504,7 +504,8 @@ export function DetectionSettings() {
               checked={blocking.blocking_escalate}
               onChange={(e) => setBlocking({ ...blocking, blocking_escalate: e.target.checked })}
             />
-            Durée qui double à chaque récidive (1h → 2h → 4h → 8h…), e-mail uniquement au 1ᵉʳ blocage
+            Durée qui double à chaque récidive (1h → 2h → 4h → 8h…) ; renouvelée ~5 min avant
+            expiration tant que l'IP scanne, e-mail uniquement au 1ᵉʳ blocage
           </label>
           <label className="muted" style={{ fontSize: 12 }}>
             Durée maximale escaladée (heures, 0 = illimité)
