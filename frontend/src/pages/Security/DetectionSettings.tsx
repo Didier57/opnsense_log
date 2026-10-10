@@ -86,6 +86,8 @@ export function DetectionSettings() {
   const [allowlist, setAllowlist] = useState<AllowlistEntry[]>([]);
   const [allowItems, setAllowItems] = useState("");
   const [allowNote, setAllowNote] = useState("");
+  const [editIp, setEditIp] = useState<string | null>(null);
+  const [editNote, setEditNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -275,6 +277,26 @@ export function DetectionSettings() {
       const result = await api.removeAllowlist([ip]);
       setAllowlist(result.items);
       setBlockMessage(`${ip} retirée de la liste blanche.`);
+    } catch (e) {
+      setBlockError(String(e));
+    }
+  };
+
+  const startEditAllow = (row: AllowlistEntry) => {
+    setEditIp(row.ip);
+    setEditNote(row.note || "");
+  };
+
+  const saveEditAllow = async () => {
+    if (!editIp) return;
+    setBlockMessage("");
+    setBlockError("");
+    try {
+      const result = await api.addAllowlist([editIp], editNote);
+      setAllowlist(result.items);
+      setBlockMessage(`Entrée « ${editIp} » mise à jour.`);
+      setEditIp(null);
+      setEditNote("");
     } catch (e) {
       setBlockError(String(e));
     }
@@ -549,12 +571,41 @@ export function DetectionSettings() {
                 {allowlist.map((row) => (
                   <tr key={row.ip}>
                     <td className="mono">{row.ip}</td>
-                    <td>{row.note || "—"}</td>
+                    <td>
+                      {editIp === row.ip ? (
+                        <input
+                          autoFocus
+                          style={{ width: "100%" }}
+                          value={editNote}
+                          onChange={(e) => setEditNote(e.target.value)}
+                          placeholder="Note (optionnelle)"
+                        />
+                      ) : (
+                        row.note || "—"
+                      )}
+                    </td>
                     <td className="mono">{row.added_at ? formatDateTime(row.added_at) : "—"}</td>
                     <td>
-                      <button title="Retirer de la liste blanche" onClick={() => removeAllow(row.ip)}>
-                        Retirer
-                      </button>
+                      {editIp === row.ip ? (
+                        <>
+                          <button title="Enregistrer la note" onClick={saveEditAllow}>
+                            Enregistrer
+                          </button>{" "}
+                          <button onClick={() => setEditIp(null)}>Annuler</button>
+                        </>
+                      ) : (
+                        <>
+                          <button title="Modifier la note" onClick={() => startEditAllow(row)}>
+                            Modifier
+                          </button>{" "}
+                          <button
+                            title="Retirer de la liste blanche"
+                            onClick={() => removeAllow(row.ip)}
+                          >
+                            Retirer
+                          </button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}
