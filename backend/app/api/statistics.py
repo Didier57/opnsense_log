@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import ipaddress
+import logging
+import time
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -10,7 +12,16 @@ from ..geoip.resolver import geo_resolver
 from ..storage.repository import EventRepository
 from .deps import InstanceId, require_user
 
+logger = logging.getLogger("api.statistics")
+
 router = APIRouter(prefix="/api/statistics", tags=["statistics"])
+
+
+def _note(name: str, started: float) -> None:
+    """Warn when a statistics query is slow, to help diagnose regressions."""
+    elapsed = time.perf_counter() - started
+    if elapsed >= 2.0:
+        logger.warning("statistics.%s slow: %.1fs", name, elapsed)
 
 
 @router.get("/summary")
@@ -21,7 +32,10 @@ def summary(
     user: str = Depends(require_user),
 ) -> dict:
     repo = EventRepository(instance_id=instance)
-    return repo.summary(start=start, end=end)
+    started = time.perf_counter()
+    result = repo.summary(start=start, end=end)
+    _note("summary", started)
+    return result
 
 
 @router.get("/top/{dimension}")
@@ -34,10 +48,13 @@ def top(
     user: str = Depends(require_user),
 ) -> dict:
     repo = EventRepository(instance_id=instance)
+    started = time.perf_counter()
     try:
-        return {"dimension": dimension, "items": repo.top_values(dimension, start, end, limit)}
+        items = repo.top_values(dimension, start, end, limit)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _note(f"top.{dimension}", started)
+    return {"dimension": dimension, "items": items}
 
 
 def _aggregate_countries(
@@ -80,10 +97,13 @@ def countries(
     the bar by outcome.
     """
     repo = EventRepository(instance_id=instance)
+    started = time.perf_counter()
     ips = repo.top_values("src_ip", start, end, 500)
     blocked = repo.top_values("src_ip", start, end, 500, actions=["block", "reject"])
     blocked_counts = {item["value"]: item["count"] for item in blocked if item.get("value")}
-    return {"items": _aggregate_countries(ips, limit, instance, blocked_counts)}
+    items = _aggregate_countries(ips, limit, instance, blocked_counts)
+    _note("countries", started)
+    return {"items": items}
 
 
 def _is_internal(value: object) -> bool:
@@ -103,6 +123,7 @@ def overview(
 ) -> dict:
     """Dashboard overview: top countries plus top internal/external IPs."""
     repo = EventRepository(instance_id=instance)
+    started = time.perf_counter()
     src = repo.top_values("src_ip", start, end, 500)
     dst = repo.top_values("dst_ip", start, end, 500)
     blocked = repo.top_values("src_ip", start, end, 500, actions=["block", "reject"])
@@ -111,7 +132,7 @@ def overview(
     dst_external = [item for item in dst if not _is_internal(item.get("value"))][:10]
     dst_internal = [item for item in dst if _is_internal(item.get("value"))][:10]
 
-    return {
+    result = {
         "countries": _aggregate_countries(src, 10, instance),
         "dst_countries": _aggregate_countries(dst, 10, instance),
         "countries_blocked": _aggregate_countries(blocked, 10, instance),
@@ -126,6 +147,8 @@ def overview(
         "protocols": repo.top_values("protocol", start, end, 10),
         "rules": repo.top_values("rule_id", start, end, 10),
     }
+    _note("overview", started)
+    return result
 
 
 @router.get("/timeseries")
@@ -137,4 +160,7 @@ def timeseries(
     user: str = Depends(require_user),
 ) -> dict:
     repo = EventRepository(instance_id=instance)
-    return {"bucket": bucket, "points": repo.timeseries(start=start, end=end, bucket=bucket)}
+    started = time.perf_counter()
+    points = repo.timeseries(start=start, end=end, bucket=bucket)
+    _note("timeseries", started)
+    return {"bucket": bucket, "points": points}

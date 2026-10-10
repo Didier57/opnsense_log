@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import { StatCard } from "../../components/StatCard";
@@ -20,37 +20,43 @@ export function Analysis() {
   const { kind } = useParams();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [items, setItems] = useState<TopItem[]>([]);
-  const [range, setRange] = useState<{ start?: string; end?: string }>({});
+  const rangeRef = useRef<{ start?: string; end?: string }>({});
   const [byProtocol, setByProtocol] = useState<TopItem[]>([]);
   const [byAction, setByAction] = useState<TopItem[]>([]);
 
-  const load = (start?: string, end?: string) => {
-    api.summary(start, end).then(setSummary).catch(() => undefined);
-    api.top("protocol", start, end, 10).then((r) => setByProtocol(r.items)).catch(() => undefined);
-    api.top("action", start, end, 10).then((r) => setByAction(r.items)).catch(() => undefined);
-    if (kind === "countries") {
-      api
-        .countries(start, end, 25)
-        .then((r) =>
-          setItems(
-            r.items.map((it) => ({
-              value: `${it.name} (${it.value})`,
-              count: it.count,
-              passed: it.passed,
-              blocked: it.blocked,
-            })),
-          ),
-        )
-        .catch(() => undefined);
-    } else if (kind && DIMENSIONS[kind]) {
-      api.top(DIMENSIONS[kind].dimension, start, end, 25).then((r) => setItems(r.items)).catch(() => undefined);
-    }
-  };
+  const load = useCallback(
+    (start?: string, end?: string) => {
+      api.summary(start, end).then(setSummary).catch(() => undefined);
+      api.top("protocol", start, end, 10).then((r) => setByProtocol(r.items)).catch(() => undefined);
+      api.top("action", start, end, 10).then((r) => setByAction(r.items)).catch(() => undefined);
+      if (kind === "countries") {
+        api
+          .countries(start, end, 25)
+          .then((r) =>
+            setItems(
+              r.items.map((it) => ({
+                value: `${it.name} (${it.value})`,
+                count: it.count,
+                passed: it.passed,
+                blocked: it.blocked,
+              })),
+            ),
+          )
+          .catch(() => undefined);
+      } else if (kind && DIMENSIONS[kind]) {
+        api.top(DIMENSIONS[kind].dimension, start, end, 25).then((r) => setItems(r.items)).catch(() => undefined);
+      }
+    },
+    [kind],
+  );
 
+  // Reload when the view changes, but never without a period: the PeriodPicker
+  // applies the initial (day) range and is the single source of truth, so we do
+  // not scan the whole table on mount / navigation.
   useEffect(() => {
-    load(range.start, range.end);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind]);
+    const current = rangeRef.current;
+    if (current.start || current.end) load(current.start, current.end);
+  }, [load]);
 
   const detail = kind ? DIMENSIONS[kind] : undefined;
   if (kind && !detail) {
@@ -64,7 +70,7 @@ export function Analysis() {
       </div>
       <PeriodPicker
         onApply={(start, end) => {
-          setRange({ start, end });
+          rangeRef.current = { start, end };
           load(start, end);
         }}
       />
