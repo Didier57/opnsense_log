@@ -123,11 +123,8 @@ export interface Overview {
   dst_external: TopItem[];
   dst_internal: TopItem[];
   blocked_ips: TopItem[];
-  src_ports: TopItem[];
-  dst_ports: TopItem[];
   directions: TopItem[];
   protocols: TopItem[];
-  rules: TopItem[];
 }
 
 export interface BlockedIp {

@@ -162,11 +162,8 @@ def overview(
             key=lambda entry: entry["count"],
             reverse=True,
         )[:10],
-        "src_ports": repo.top_values("src_port", start, end, 10),
-        "dst_ports": repo.top_values("dst_port", start, end, 10),
         "directions": repo.top_values("direction", start, end, 10),
         "protocols": repo.top_values("protocol", start, end, 10),
-        "rules": repo.top_values("rule_id", start, end, 10),
     }
     _note("overview.tops", marker)
     _note("overview", started)

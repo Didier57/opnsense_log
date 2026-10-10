@@ -138,18 +138,13 @@ export function Dashboard() {
             <BarList title="Principales IP sources internes" items={overview?.src_internal ?? []} />
             <BarList title="IP les plus bloquées" items={overview?.blocked_ips ?? []} />
           </div>
-          <div className="grid-3">
+          <div className="grid-2">
             <BarList title="Principales IP destinations externes" items={overview?.dst_external ?? []} />
             <BarList title="Principales IP destinations internes" items={overview?.dst_internal ?? []} />
-            <BarList title="Principaux ports de destination" items={overview?.dst_ports ?? []} />
-          </div>
-          <div className="grid-3">
-            <BarList title="Principaux ports source" items={overview?.src_ports ?? []} />
-            <BarList title="Protocoles" items={overview?.protocols ?? []} />
-            <BarList title="Sens du trafic" items={directions} />
           </div>
           <div className="grid-2">
-            <BarList title="Principales règles" items={overview?.rules ?? []} />
+            <BarList title="Protocoles" items={overview?.protocols ?? []} />
+            <BarList title="Sens du trafic" items={directions} />
           </div>
         </>
       ) : (
