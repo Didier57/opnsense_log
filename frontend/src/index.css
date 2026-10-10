@@ -195,3 +195,4 @@ table.log-table tr:hover { background: var(--bg-alt); cursor: pointer; }
   border-radius: 6px;
   padding: 10px;
 }
+.period-nav { padding: 4px 12px; font-size: 13px; line-height: 1; }

@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import { StatCard } from "../../components/StatCard";
 import { BarList } from "../../components/Charts/BarList";
-import { TimeRangePicker } from "../../components/TimeRangePicker";
+import { PeriodPicker } from "../../components/PeriodPicker";
 import { formatNumber } from "../../format";
 import type { Summary, TopItem } from "../../types";
 
@@ -62,7 +62,7 @@ export function Analysis() {
       <div className="topbar">
         <h2>{detail ? detail.title : "Vue d'ensemble de l'analyse"}</h2>
       </div>
-      <TimeRangePicker
+      <PeriodPicker
         onApply={(start, end) => {
           setRange({ start, end });
           load(start, end);
