@@ -10,7 +10,7 @@ const INTERVALS = [5, 10, 30, 60];
 export function Dashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [auto, setAuto] = useState(true);
+  const [auto, setAuto] = useState(false);
   const [intervalSec, setIntervalSec] = useState(30);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
