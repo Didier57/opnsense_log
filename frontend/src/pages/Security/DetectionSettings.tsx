@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api/client";
+import { WhoisButton } from "../../components/Whois";
 import { formatDateTime } from "../../format";
 import type { AllowlistEntry, BlockedIp } from "../../types";
 
@@ -538,7 +539,9 @@ export function DetectionSettings() {
               <tbody>
                 {blocked.map((row) => (
                   <tr key={row.ip}>
-                    <td className="mono">{row.ip}</td>
+                    <td className="mono">
+                      {row.ip} <WhoisButton ip={row.ip} />
+                    </td>
                     <td>{row.rule || "—"}</td>
                     <td>{row.source || "—"}</td>
                     <td className="mono">{row.added_at ? formatDateTime(row.added_at) : "—"}</td>

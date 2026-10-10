@@ -155,6 +155,9 @@ export const api = {
     request<FilterlogImportStatus>("/api/opnsense/filterlog/import/status"),
   interfaces: () => request<{ items: OpnsenseInterface[] }>("/api/interfaces"),
 
+  whoisIp: (ip: string) =>
+    request<{ ip: string; text: string }>(`/api/whois?ip=${encodeURIComponent(ip)}`),
+
   lookupHostnames: (ips: string[]) =>
     request<{ items: Record<string, string | null> }>(
       `/api/lookup?ips=${encodeURIComponent(ips.join(","))}`,

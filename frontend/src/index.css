@@ -145,3 +145,49 @@ table.log-table tr:hover { background: var(--bg-alt); cursor: pointer; }
 .bar-row .bar { height: 14px; background: var(--accent); border-radius: 3px; }
 .bar-row .k { width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bar-row .n { color: var(--text-dim); margin-left: auto; }
+
+.whois-btn {
+  padding: 1px 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.whois-btn:hover { border-color: var(--accent); }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+.modal {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px;
+  width: min(760px, 100%);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.whois-text {
+  margin: 0;
+  overflow: auto;
+  max-height: 60vh;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+}

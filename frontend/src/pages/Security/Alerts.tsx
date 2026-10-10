@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
+import { WhoisButton } from "../../components/Whois";
 import { formatDateTime } from "../../format";
 import type { Alert, SearchClause } from "../../types";
 
@@ -173,6 +174,7 @@ export function Alerts() {
                     <td>{alert.rule}</td>
                     <td className="mono">
                       {alert.src_ip || "—"}
+                      {alert.src_ip && <WhoisButton ip={alert.src_ip} style={{ marginLeft: 8 }} />}
                       {alert.src_ip && (
                         <button
                           style={{ marginLeft: 8 }}
