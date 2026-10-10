@@ -19,6 +19,7 @@ function formatUptime(totalSeconds: number): string {
 export function SystemStatus() {
   const [status, setStatus] = useState<Record<string, any> | null>(null);
   const [monitoring, setMonitoring] = useState<Record<string, number> | null>(null);
+  const [optimizeMsg, setOptimizeMsg] = useState("");
 
   const load = () => {
     api.systemStatus().then(setStatus).catch(() => undefined);
@@ -31,12 +32,32 @@ export function SystemStatus() {
     return () => clearInterval(timer);
   }, []);
 
+  const optimize = async () => {
+    if (
+      !window.confirm(
+        "Reconstruire la base des événements (triée par date) ? Opération lourde qui peut prendre plusieurs minutes, à lancer de préférence sans trafic important.",
+      )
+    )
+      return;
+    setOptimizeMsg("");
+    try {
+      await api.optimizeDb();
+      setOptimizeMsg("Optimisation lancée en arrière-plan — voir Journaux système pour la fin.");
+    } catch (err) {
+      setOptimizeMsg(String(err));
+    }
+  };
+
   return (
     <>
       <div className="topbar">
         <h2>État du système</h2>
-        <button onClick={load}>Rafraîchir</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={optimize}>Optimiser la base</button>
+          <button onClick={load}>Rafraîchir</button>
+        </div>
       </div>
+      {optimizeMsg && <p className="muted">{optimizeMsg}</p>}
       <div className="cards">
         <StatCard label="Syslog reçus" value={monitoring?.received ?? 0} />
         <StatCard label="Analysés" value={monitoring?.parsed ?? 0} />

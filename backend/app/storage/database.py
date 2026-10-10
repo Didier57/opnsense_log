@@ -233,6 +233,37 @@ class Database:
         # write transaction is active on the primary connection.
         return self._write_conn.cursor().execute(sql, params or [])
 
+    def ensure_event_index(self) -> None:
+        """Create the event_time index (idempotent, best effort)."""
+        with self._write_lock:
+            try:
+                self._write_conn.execute(
+                    'CREATE INDEX IF NOT EXISTS "idx_events_event_time" ON events ("event_time")'
+                )
+            except Exception:  # noqa: BLE001 - index creation must never break startup
+                pass
+
+    def compact_events(self) -> None:
+        """Rewrite events sorted by event_time and (re)build the time index.
+
+        Imported/backfilled rows can land out of time order, which defeats
+        DuckDB's zone-map pruning and forces every range query to scan most of
+        the table. Rebuilding the table in event_time order restores pruning.
+        """
+        with self._write_lock:
+            self._write_conn.execute("BEGIN TRANSACTION")
+            try:
+                self._write_conn.execute(
+                    'CREATE TABLE "events_compact" AS SELECT * FROM events ORDER BY "event_time"'
+                )
+                self._write_conn.execute('DROP TABLE "events"')
+                self._write_conn.execute('ALTER TABLE "events_compact" RENAME TO "events"')
+                self._write_conn.execute("COMMIT")
+            except Exception:
+                self._write_conn.execute("ROLLBACK")
+                raise
+        self.ensure_event_index()
+
     def close(self) -> None:
         self._write_conn.close()
 

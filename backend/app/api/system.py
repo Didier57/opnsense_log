@@ -1,6 +1,9 @@
 """System status and internal logs endpoints."""
 from __future__ import annotations
 
+import logging
+import threading
+
 from fastapi import APIRouter, Depends
 
 from ..config import settings
@@ -15,6 +18,8 @@ from ..websocket.live import get_live_hub
 from .deps import InstanceId, require_user
 
 router = APIRouter(prefix="/api/system", tags=["system"])
+
+logger = logging.getLogger("api.system")
 
 
 @router.get("/status")
@@ -59,3 +64,23 @@ def status(instance: str | None = InstanceId, user: str = Depends(require_user))
 def logs(limit: int = 200, user: str = Depends(require_user)) -> dict:
     items = list(reversed(ring_handler.records[-limit:]))
     return {"items": items}
+
+
+@router.post("/optimize")
+def optimize(instance: str | None = InstanceId, user: str = Depends(require_user)) -> dict:
+    """Rebuild the events table in time order (restores zone-map pruning).
+
+    Runs in the background: the rebuild holds the writer lock and can take a
+    while on a large table, so the request returns immediately.
+    """
+    iid = resolve_instance_id(instance)
+
+    def _run() -> None:
+        try:
+            get_database(iid).compact_events()
+            logger.info("Database compaction done (instance=%s)", iid)
+        except Exception:  # noqa: BLE001
+            logger.exception("Database compaction failed (instance=%s)", iid)
+
+    threading.Thread(target=_run, name=f"db-compact-{iid}", daemon=True).start()
+    return {"ok": True, "started": True}
