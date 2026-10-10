@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import logging
-import threading
-import time
 
 from fastapi import APIRouter, Depends
 
@@ -21,9 +19,6 @@ from .deps import InstanceId, require_user
 router = APIRouter(prefix="/api/system", tags=["system"])
 
 logger = logging.getLogger("api.system")
-
-_compacting: set[str] = set()
-_compact_lock = threading.Lock()
 
 
 @router.get("/status")
@@ -68,36 +63,3 @@ def status(instance: str | None = InstanceId, user: str = Depends(require_user))
 def logs(limit: int = 200, user: str = Depends(require_user)) -> dict:
     items = list(reversed(ring_handler.records[-limit:]))
     return {"items": items}
-
-
-@router.post("/optimize")
-def optimize(instance: str | None = InstanceId, user: str = Depends(require_user)) -> dict:
-    """Rebuild the events table in time order (restores zone-map pruning).
-
-    Runs in the background: the rebuild holds the writer lock and can take a
-    while on a large table, so the request returns immediately.
-    """
-    iid = resolve_instance_id(instance)
-
-    with _compact_lock:
-        if iid in _compacting:
-            return {"ok": True, "started": False}
-        _compacting.add(iid)
-
-    def _run() -> None:
-        logger.info("Database compaction started (instance=%s)", iid)
-        started = time.monotonic()
-        try:
-            rows = get_database(iid).compact_events()
-            logger.info(
-                "Database compaction done (instance=%s, %d rows, %.1fs)",
-                iid, rows, time.monotonic() - started,
-            )
-        except Exception:  # noqa: BLE001
-            logger.exception("Database compaction failed (instance=%s)", iid)
-        finally:
-            with _compact_lock:
-                _compacting.discard(iid)
-
-    threading.Thread(target=_run, name=f"db-compact-{iid}", daemon=True).start()
-    return {"ok": True, "started": True}

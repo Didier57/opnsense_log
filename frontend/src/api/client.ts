@@ -99,8 +99,6 @@ export const api = {
     request<{ items: { ts: string; level: string; source: string; message: string }[] }>(
       `/api/system/logs?limit=${limit}`,
     ),
-  optimizeDb: () =>
-    request<{ ok: boolean; started: boolean }>("/api/system/optimize", { method: "POST" }),
 
   logs: (params: Record<string, string | number | undefined>) => {
     const query = new URLSearchParams();

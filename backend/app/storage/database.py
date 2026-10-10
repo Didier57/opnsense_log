@@ -260,34 +260,6 @@ class Database:
             except Exception:  # noqa: BLE001 - index creation must never break startup
                 pass
 
-    def compact_events(self) -> int:
-        """Rewrite events sorted by event_time and (re)build the time index.
-
-        Imported/backfilled rows can land out of time order, which defeats
-        DuckDB's zone-map pruning and forces every range query to scan most of
-        the table. Rebuilding the table in event_time order restores pruning.
-        Returns the number of rows in the rebuilt table.
-        """
-        with self._write_lock:
-            self._write_conn.execute('DROP TABLE IF EXISTS "events_compact"')
-            self._write_conn.execute("BEGIN TRANSACTION")
-            try:
-                self._write_conn.execute(
-                    'CREATE TABLE "events_compact" AS SELECT * FROM events ORDER BY "event_time"'
-                )
-                self._write_conn.execute('DROP TABLE "events"')
-                self._write_conn.execute('ALTER TABLE "events_compact" RENAME TO "events"')
-                self._write_conn.execute("COMMIT")
-            except Exception:
-                try:
-                    self._write_conn.execute("ROLLBACK")
-                except Exception:  # noqa: BLE001 - report the original error
-                    pass
-                raise
-            self.ensure_event_index()
-            row = self._write_conn.execute("SELECT COUNT(*) FROM events").fetchone()
-        return int(row[0]) if row else 0
-
     def close(self) -> None:
         self._write_conn.close()
 

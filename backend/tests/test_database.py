@@ -17,28 +17,6 @@ def _event(hours_ago: int) -> FirewallEvent:
     )
 
 
-def test_compact_events_reorders_and_counts(tmp_path):
-    db = Database(str(tmp_path / "compact.duckdb"))
-    repo = EventRepository(db)
-    repo.insert_events([_event(h) for h in (5, 1, 3, 0, 2)])
-
-    assert db.compact_events() == 5
-
-    times = [row[0] for row in db.execute_read('SELECT "event_time" FROM events').fetchall()]
-    assert times == sorted(times)
-    assert EventRepository(db).count() == 5
-    db.close()
-
-
-def test_compact_events_is_idempotent(tmp_path):
-    db = Database(str(tmp_path / "compact2.duckdb"))
-    EventRepository(db).insert_events([_event(0)])
-
-    assert db.compact_events() == 1
-    assert db.compact_events() == 1
-    db.close()
-
-
 def test_delete_events_before_returns_count(tmp_path):
     db = Database(str(tmp_path / "retention.duckdb"))
     repo = EventRepository(db)
