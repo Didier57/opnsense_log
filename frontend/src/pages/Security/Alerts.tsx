@@ -125,6 +125,7 @@ export function Alerts() {
                   <th>Gravité</th>
                   <th>Type</th>
                   <th>IP source</th>
+                  <th>Label</th>
                   <th>Détail</th>
                 </tr>
               </thead>
@@ -159,6 +160,9 @@ export function Alerts() {
                           Bloquer
                         </button>
                       )}
+                    </td>
+                    <td className="mono">
+                      {String(alert.details?.rule_label ?? "") || "—"}
                     </td>
                     <td>
                       <strong>{alert.title}</strong>

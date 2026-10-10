@@ -72,6 +72,32 @@ def _window_start(window: int, floor: datetime | None) -> datetime:
     return cutoff
 
 
+def _block_labels(src_ips: list[str], cutoff: datetime) -> dict[str, str]:
+    """Map each source IP to the label of the rule that most often blocked it.
+
+    The firewall rule description is joined from ``opnsense_rules``; the raw rule
+    id is used when no description is known. Used to tell *what* blocked an IP.
+    """
+    ips = [ip for ip in dict.fromkeys(src_ips) if ip]
+    if not ips:
+        return {}
+    marks = ", ".join("?" for _ in ips)
+    rows = _rows(
+        "SELECT e.\"src_ip\", e.\"rule_id\", COUNT(*) AS c, MAX(r.\"description\") "
+        "FROM events e LEFT JOIN opnsense_rules r ON r.\"rule_id\" = e.\"rule_id\" "
+        "WHERE e.\"event_time\" >= ? AND lower(e.\"action\") IN ('block', 'reject') "
+        f"AND e.\"rule_id\" <> '' AND e.\"src_ip\" IN ({marks}) "
+        "GROUP BY 1, 2 ORDER BY 1, 3 DESC",
+        [cutoff, *ips],
+    )
+    labels: dict[str, str] = {}
+    for src_ip, rule_id, _count, description in rows:
+        if src_ip in labels:
+            continue
+        labels[src_ip] = (description or rule_id or "").strip()
+    return labels
+
+
 def _iso(value: datetime | None) -> str | None:
     """UTC ISO string for JSON storage (``None`` when unavailable)."""
     if value is None:
@@ -117,6 +143,7 @@ def _detect_port_scan(cfg: dict, floor: datetime | None = None, allow_nets: list
         [cutoff, cfg["detection_portscan_ports"], _MAX_PER_RULE],
     )
     bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
+    labels = _block_labels([r[0] for r in rows], cutoff)
     alerts = []
     for src_ip, ports, last_seen in rows:
         if _skip_source(cfg, src_ip, allow_nets):
@@ -130,7 +157,12 @@ def _detect_port_scan(cfg: dict, floor: datetime | None = None, allow_nets: list
                 "event_time": last_seen,
                 "title": "Scan de ports détecté",
                 "message": f"{src_ip} a contacté {ports} ports distincts en {window}s",
-                "details": {"ports": ports, "window_sec": window, "event_time": _iso(last_seen)},
+                "details": {
+                    "ports": ports,
+                    "window_sec": window,
+                    "rule_label": labels.get(src_ip, ""),
+                    "event_time": _iso(last_seen),
+                },
             }
         )
     return alerts
@@ -153,6 +185,7 @@ def _detect_bruteforce(cfg: dict, floor: datetime | None = None, allow_nets: lis
         [cutoff, cfg["detection_bruteforce_count"], _MAX_PER_RULE],
     )
     bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
+    labels = _block_labels([r[0] for r in rows], cutoff)
     alerts = []
     for src_ip, attempts, last_seen in rows:
         if _skip_source(cfg, src_ip, allow_nets):
@@ -166,7 +199,12 @@ def _detect_bruteforce(cfg: dict, floor: datetime | None = None, allow_nets: lis
                 "event_time": last_seen,
                 "title": "Tentatives répétées bloquées",
                 "message": f"{src_ip} a été bloqué {attempts} fois en {window}s",
-                "details": {"attempts": attempts, "window_sec": window, "event_time": _iso(last_seen)},
+                "details": {
+                    "attempts": attempts,
+                    "window_sec": window,
+                    "rule_label": labels.get(src_ip, ""),
+                    "event_time": _iso(last_seen),
+                },
             }
         )
     return alerts
@@ -190,6 +228,7 @@ def _detect_bruteforce_service(cfg: dict, floor: datetime | None = None, allow_n
         [cutoff, cfg["detection_bruteforce_service_count"], _MAX_PER_RULE],
     )
     bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
+    labels = _block_labels([r[0] for r in rows], cutoff)
     alerts = []
     for src_ip, dst_port, attempts, last_seen in rows:
         if _skip_source(cfg, src_ip, allow_nets):
@@ -207,6 +246,7 @@ def _detect_bruteforce_service(cfg: dict, floor: datetime | None = None, allow_n
                     "attempts": attempts,
                     "dst_port": dst_port,
                     "window_sec": window,
+                    "rule_label": labels.get(src_ip, ""),
                     "event_time": _iso(last_seen),
                 },
             }
@@ -231,6 +271,7 @@ def _detect_horizontal_scan(cfg: dict, floor: datetime | None = None, allow_nets
         [cutoff, cfg["detection_horizontalscan_hosts"], _MAX_PER_RULE],
     )
     bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
+    labels = _block_labels([r[0] for r in rows], cutoff)
     alerts = []
     for src_ip, hosts, last_seen in rows:
         if _skip_source(cfg, src_ip, allow_nets):
@@ -244,7 +285,12 @@ def _detect_horizontal_scan(cfg: dict, floor: datetime | None = None, allow_nets
                 "event_time": last_seen,
                 "title": "Balayage réseau détecté",
                 "message": f"{src_ip} a contacté {hosts} hôtes distincts en {window}s",
-                "details": {"hosts": hosts, "window_sec": window, "event_time": _iso(last_seen)},
+                "details": {
+                    "hosts": hosts,
+                    "window_sec": window,
+                    "rule_label": labels.get(src_ip, ""),
+                    "event_time": _iso(last_seen),
+                },
             }
         )
     return alerts
@@ -396,6 +442,8 @@ def _alerts_html(alerts: list[dict]) -> str:
             f'<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">{html_lib.escape(str(alert.get("title") or ""))}</td>'
             f'<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-family:monospace">'
             f'{html_lib.escape(str(alert.get("src_ip") or ""))}</td>'
+            f'<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">'
+            f'{html_lib.escape(str(alert.get("details", {}).get("rule_label") or ""))}</td>'
             f'<td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">{html_lib.escape(str(alert.get("message") or ""))}</td>'
             "</tr>"
         )
@@ -415,6 +463,7 @@ def _alerts_html(alerts: list[dict]) -> str:
         '<th style="text-align:left;padding:8px 12px;border-bottom:2px solid #d1d5db">Date</th>'
         '<th style="text-align:left;padding:8px 12px;border-bottom:2px solid #d1d5db">Type</th>'
         '<th style="text-align:left;padding:8px 12px;border-bottom:2px solid #d1d5db">Source</th>'
+        '<th style="text-align:left;padding:8px 12px;border-bottom:2px solid #d1d5db">Label</th>'
         '<th style="text-align:left;padding:8px 12px;border-bottom:2px solid #d1d5db">Détail</th>'
         '</tr></thead>'
         f"<tbody>{rows}</tbody></table>"

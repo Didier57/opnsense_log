@@ -70,6 +70,20 @@ def test_bruteforce_alert(db):
     assert any(a["rule"] == "bruteforce" for a in alerts)
 
 
+def test_bruteforce_alert_includes_rule_label(db):
+    _raise_thresholds(detection_portscan_ports=100000)
+    db.execute_write(
+        'INSERT INTO opnsense_rules ("rule_id", "description") VALUES (?, ?)',
+        ["abcd1234", "BLOCK_IP"],
+    )
+    EventRepository(db).insert_events(
+        [_event(action="block", rule_id="abcd1234") for _ in range(3)]
+    )
+    alerts = [a for a in deng.run_cycle() if a["rule"] == "bruteforce"]
+    assert alerts
+    assert alerts[0]["details"]["rule_label"] == "BLOCK_IP"
+
+
 def test_bruteforce_service_alert(db):
     _raise_thresholds(
         detection_portscan_ports=100000,
