@@ -1,15 +1,17 @@
 """Managed allowlist of trusted IPs/networks.
 
 Entries are honored by both the detection engine (no alert is raised for a
-trusted source) and the automatic blocker (trusted IPs are never blocked). They
-complement the free-text ``blocking_whitelist`` setting with a UI-managed list
-where each entry can carry a note.
+trusted source) and the automatic blocker (trusted IPs are never blocked).  This
+is the single source of truth: the legacy free-text ``blocking_whitelist``
+setting is imported here once (see :func:`migrate_legacy_whitelist`) and then
+cleared.
 """
 from __future__ import annotations
 
 import ipaddress
 
 from ..storage.database import get_database
+from .blocking_store import get_blocking_settings, update_blocking_settings
 
 
 def _normalize(token: str) -> str | None:
@@ -84,3 +86,25 @@ def is_allowlisted(ip: str) -> bool:
     except ValueError:
         return False
     return any(addr in net for net in allowlist_nets())
+
+
+def migrate_legacy_whitelist() -> list[str]:
+    """Import the legacy ``blocking_whitelist`` text into the managed allowlist.
+
+    Runs once: valid IP/CIDR tokens are added to ``allowlist_ips`` and the
+    setting is cleared so trusted sources live in a single place. Returns the
+    tokens that were imported.
+    """
+    try:
+        legacy = str(get_blocking_settings().get("blocking_whitelist") or "").strip()
+    except Exception:  # noqa: BLE001 - migration must never break startup
+        return []
+    if not legacy:
+        return []
+    tokens = legacy.replace(",", " ").split()
+    added = add_allowlist(tokens, note="importé de l'ancienne liste blanche")
+    try:
+        update_blocking_settings({"blocking_whitelist": ""})
+    except Exception:  # noqa: BLE001
+        pass
+    return added

@@ -42,3 +42,24 @@ def test_is_allowlisted_membership(db):
     assert als.is_allowlisted("10.1.2.3") is True
     assert als.is_allowlisted("11.0.0.1") is False
     assert als.is_allowlisted("not-an-ip") is False
+
+
+def test_migrate_legacy_whitelist(db, monkeypatch):
+    written: dict = {}
+    monkeypatch.setattr(
+        als, "get_blocking_settings", lambda: {"blocking_whitelist": "192.168.1.10, 10.0.0.0/8 bad"}
+    )
+    monkeypatch.setattr(als, "update_blocking_settings", lambda payload: written.update(payload))
+
+    added = als.migrate_legacy_whitelist()
+    assert "192.168.1.10" in added
+    assert "10.0.0.0/8" in added
+    assert "bad" not in added
+    assert written.get("blocking_whitelist") == ""
+    assert {"192.168.1.10", "10.0.0.0/8"} <= {i["ip"] for i in als.list_allowlist()}
+
+
+def test_migrate_legacy_whitelist_noop_when_empty(db, monkeypatch):
+    monkeypatch.setattr(als, "get_blocking_settings", lambda: {"blocking_whitelist": ""})
+    monkeypatch.setattr(als, "update_blocking_settings", lambda payload: None)
+    assert als.migrate_legacy_whitelist() == []

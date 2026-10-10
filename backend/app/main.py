@@ -158,6 +158,15 @@ async def lifespan(app: FastAPI):
     from .storage.database import get_database
 
     await asyncio.to_thread(get_database)
+    # One-time move of the legacy free-text whitelist into the managed allowlist.
+    try:
+        from .detection.allowlist_store import migrate_legacy_whitelist
+
+        migrated = await asyncio.to_thread(migrate_legacy_whitelist)
+        if migrated:
+            logger.info("Imported %d legacy whitelist entrie(s) into the allowlist", len(migrated))
+    except Exception:  # noqa: BLE001 - never block startup on migration
+        logger.exception("Legacy whitelist migration failed")
     tasks = [
         asyncio.create_task(retention_loop(), name="retention"),
         asyncio.create_task(_opnsense_sync_loop(), name="opnsense-sync"),

@@ -55,7 +55,6 @@ interface BlockingForm {
   blocking_enabled: boolean;
   blocking_alias: string;
   blocking_mode: string;
-  blocking_whitelist: string;
   blocking_ttl_hours: number;
   blocking_notify_email: boolean;
   blocking_token_days: number;
@@ -70,7 +69,6 @@ const DEFAULT_BLOCKING: BlockingForm = {
   blocking_enabled: false,
   blocking_alias: "",
   blocking_mode: "manual",
-  blocking_whitelist: "",
   blocking_ttl_hours: 0,
   blocking_notify_email: true,
   blocking_token_days: 7,
@@ -102,7 +100,6 @@ export function DetectionSettings() {
           blocking_enabled: Boolean(data.blocking_enabled ?? false),
           blocking_alias: String(data.blocking_alias ?? ""),
           blocking_mode: String(data.blocking_mode ?? "manual"),
-          blocking_whitelist: String(data.blocking_whitelist ?? ""),
           blocking_ttl_hours: Number(data.blocking_ttl_hours ?? 0),
           blocking_notify_email: Boolean(data.blocking_notify_email ?? true),
           blocking_token_days: Number(data.blocking_token_days ?? 7),
@@ -418,16 +415,6 @@ export function DetectionSettings() {
             onChange={(e) => setBlocking({ ...blocking, blocking_notify_email: e.target.checked })}
           />
           Envoyer un e-mail lors d'un blocage (avec un bouton « Débloquer » — nécessite SMTP et l'URL publique)
-        </label>
-        <label className="muted" style={{ fontSize: 12 }}>
-          Liste blanche (IP ou CIDR, séparés par des virgules — jamais bloqués)
-          <br />
-          <textarea
-            rows={2}
-            style={{ width: "100%" }}
-            value={blocking.blocking_whitelist}
-            onChange={(e) => setBlocking({ ...blocking, blocking_whitelist: e.target.value })}
-          />
         </label>
         <label className="muted" style={{ fontSize: 12 }}>
           Listes déjà bloquantes (tables pf / alias, séparés par des virgules — CrowdSec, Q-Feeds…).
