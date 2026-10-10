@@ -67,6 +67,9 @@ class DetectionSettings(BaseModel):
     detection_portscan_window_sec: int | None = Field(default=None, ge=5)
     detection_bruteforce_count: int | None = Field(default=None, ge=2)
     detection_bruteforce_window_sec: int | None = Field(default=None, ge=5)
+    detection_bruteforce_service_count: int | None = Field(default=None, ge=2)
+    detection_horizontalscan_hosts: int | None = Field(default=None, ge=2)
+    detection_horizontalscan_window_sec: int | None = Field(default=None, ge=5)
     detection_spike_enabled: bool | None = None
     detection_spike_threshold: int | None = Field(default=None, ge=1)
     detection_spike_window_sec: int | None = Field(default=None, ge=5)
@@ -100,6 +103,10 @@ class BlockingSettings(BaseModel):
     blocking_notify_email: bool | None = None
     blocking_token_days: int | None = Field(default=None, ge=1)
     blocking_skip_tables: str | None = None
+    blocking_skip_tables_detected: str | None = None
+    blocking_dry_run: bool | None = None
+    blocking_escalate: bool | None = None
+    blocking_ttl_max_hours: int | None = Field(default=None, ge=0)
 
 
 class BlockRequest(BaseModel):

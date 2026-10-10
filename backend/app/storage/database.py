@@ -158,7 +158,8 @@ CREATE TABLE IF NOT EXISTS blocked_ips (
     "rule"       VARCHAR,
     "source"     VARCHAR,
     "added_at"   TIMESTAMPTZ,
-    "expires_at" TIMESTAMPTZ
+    "expires_at" TIMESTAMPTZ,
+    "hits"       INTEGER
 );
 """
 
@@ -182,6 +183,14 @@ class Database:
     def _init_schema(self) -> None:
         with self._write_lock:
             self._write_conn.execute(_DDL)
+            # Lightweight migrations for databases created by older versions.
+            for statement in (
+                'ALTER TABLE blocked_ips ADD COLUMN IF NOT EXISTS "hits" INTEGER',
+            ):
+                try:
+                    self._write_conn.execute(statement)
+                except Exception:  # noqa: BLE001 - column already there / older engine
+                    pass
 
     @property
     def write_conn(self):

@@ -12,6 +12,9 @@ interface DetectionForm {
   detection_portscan_window_sec: number;
   detection_bruteforce_count: number;
   detection_bruteforce_window_sec: number;
+  detection_bruteforce_service_count: number;
+  detection_horizontalscan_hosts: number;
+  detection_horizontalscan_window_sec: number;
   detection_spike_threshold: number;
   detection_spike_window_sec: number;
   detection_notify_cooldown_min: number;
@@ -26,6 +29,9 @@ const DEFAULT_FORM: DetectionForm = {
   detection_portscan_window_sec: 60,
   detection_bruteforce_count: 20,
   detection_bruteforce_window_sec: 120,
+  detection_bruteforce_service_count: 5,
+  detection_horizontalscan_hosts: 15,
+  detection_horizontalscan_window_sec: 60,
   detection_spike_threshold: 300,
   detection_spike_window_sec: 60,
   detection_notify_cooldown_min: 60,
@@ -37,6 +43,9 @@ const NUMBER_FIELDS: { key: keyof DetectionForm; label: string; min: number }[] 
   { key: "detection_portscan_window_sec", label: "Scan de ports — fenêtre (s)", min: 5 },
   { key: "detection_bruteforce_count", label: "Force brute — nb de blocages", min: 2 },
   { key: "detection_bruteforce_window_sec", label: "Force brute — fenêtre (s)", min: 5 },
+  { key: "detection_bruteforce_service_count", label: "Force brute par service — nb de blocages", min: 2 },
+  { key: "detection_horizontalscan_hosts", label: "Balayage réseau — nb d'hôtes distincts", min: 2 },
+  { key: "detection_horizontalscan_window_sec", label: "Balayage réseau — fenêtre (s)", min: 5 },
   { key: "detection_spike_threshold", label: "Pic de trafic — nb d'événements", min: 1 },
   { key: "detection_spike_window_sec", label: "Pic de trafic — fenêtre (s)", min: 5 },
   { key: "detection_notify_cooldown_min", label: "Anti-doublon e-mail (min)", min: 0 },
@@ -51,6 +60,10 @@ interface BlockingForm {
   blocking_notify_email: boolean;
   blocking_token_days: number;
   blocking_skip_tables: string;
+  blocking_skip_tables_detected: string;
+  blocking_dry_run: boolean;
+  blocking_escalate: boolean;
+  blocking_ttl_max_hours: number;
 }
 
 const DEFAULT_BLOCKING: BlockingForm = {
@@ -62,6 +75,10 @@ const DEFAULT_BLOCKING: BlockingForm = {
   blocking_notify_email: true,
   blocking_token_days: 7,
   blocking_skip_tables: "crowdsec_blacklists, crowdsec6_blacklists",
+  blocking_skip_tables_detected: "",
+  blocking_dry_run: false,
+  blocking_escalate: false,
+  blocking_ttl_max_hours: 720,
 };
 
 export function DetectionSettings() {
@@ -89,6 +106,10 @@ export function DetectionSettings() {
           blocking_skip_tables: String(
             data.blocking_skip_tables ?? "crowdsec_blacklists, crowdsec6_blacklists",
           ),
+          blocking_skip_tables_detected: String(data.blocking_skip_tables_detected ?? ""),
+          blocking_dry_run: Boolean(data.blocking_dry_run ?? false),
+          blocking_escalate: Boolean(data.blocking_escalate ?? false),
+          blocking_ttl_max_hours: Number(data.blocking_ttl_max_hours ?? 720),
         }),
       )
       .catch(() => undefined);
@@ -112,6 +133,11 @@ export function DetectionSettings() {
           detection_portscan_window_sec: Number(data.detection_portscan_window_sec ?? 60),
           detection_bruteforce_count: Number(data.detection_bruteforce_count ?? 20),
           detection_bruteforce_window_sec: Number(data.detection_bruteforce_window_sec ?? 120),
+          detection_bruteforce_service_count: Number(data.detection_bruteforce_service_count ?? 5),
+          detection_horizontalscan_hosts: Number(data.detection_horizontalscan_hosts ?? 15),
+          detection_horizontalscan_window_sec: Number(
+            data.detection_horizontalscan_window_sec ?? 60,
+          ),
           detection_spike_threshold: Number(data.detection_spike_threshold ?? 300),
           detection_spike_window_sec: Number(data.detection_spike_window_sec ?? 60),
           detection_notify_cooldown_min: Number(data.detection_notify_cooldown_min ?? 60),
@@ -159,6 +185,41 @@ export function DetectionSettings() {
       const result = await api.pruneBlocking();
       setBlockMessage(`${result.removed} IP expirée(s) retirée(s).`);
       loadBlocked();
+    } catch (e) {
+      setBlockError(String(e));
+    }
+  };
+
+  const detectTables = async () => {
+    setBlockMessage("");
+    setBlockError("");
+    try {
+      const result = await api.detectBlockTables();
+      setBlocking((prev) => ({
+        ...prev,
+        blocking_skip_tables_detected: String(result.settings?.blocking_skip_tables_detected ?? ""),
+      }));
+      setBlockMessage(
+        result.tables.length
+          ? `Tables détectées : ${result.tables.join(", ")}`
+          : "Aucune table de blocage détectée sur le pare-feu.",
+      );
+    } catch (e) {
+      setBlockError(String(e));
+    }
+  };
+
+  const reconcile = async () => {
+    setBlockMessage("");
+    setBlockError("");
+    try {
+      const result = await api.reconcileBlocking();
+      if (!result.ok) throw new Error(result.error || "Échec de la réconciliation");
+      setBlockMessage(
+        result.reconciled
+          ? `${result.reconciled} IP re-ajoutée(s) à l'alias.`
+          : "Alias déjà cohérent.",
+      );
     } catch (e) {
       setBlockError(String(e));
     }
@@ -244,6 +305,7 @@ export function DetectionSettings() {
           <h3 style={{ margin: 0 }}>Blocage automatique (alias OPNsense)</h3>
           <div className="filters">
             <button onClick={pruneBlocked}>Retirer les IP expirées</button>
+            <button onClick={reconcile}>Réconcilier l'alias</button>
             <button className="active" onClick={saveBlocking}>
               Enregistrer le blocage
             </button>
@@ -332,6 +394,44 @@ export function DetectionSettings() {
             onChange={(e) => setBlocking({ ...blocking, blocking_skip_tables: e.target.value })}
           />
         </label>
+        <div className="filters" style={{ alignItems: "center" }}>
+          <button onClick={detectTables}>Détecter les listes existantes</button>
+          <span className="muted" style={{ fontSize: 12 }}>
+            {blocking.blocking_skip_tables_detected
+              ? `Détectées (auto) : ${blocking.blocking_skip_tables_detected}`
+              : "Aucune liste détectée automatiquement."}
+          </span>
+        </div>
+        <label className="filters">
+          <input
+            type="checkbox"
+            checked={blocking.blocking_dry_run}
+            onChange={(e) => setBlocking({ ...blocking, blocking_dry_run: e.target.checked })}
+          />
+          Mode simulation (dry-run) — n'ajoute aucune IP, journalise seulement ce qui serait bloqué
+        </label>
+        <div className="grid-2">
+          <label className="filters">
+            <input
+              type="checkbox"
+              checked={blocking.blocking_escalate}
+              onChange={(e) => setBlocking({ ...blocking, blocking_escalate: e.target.checked })}
+            />
+            Durée croissante en cas de récidive (durée × nombre de blocages)
+          </label>
+          <label className="muted" style={{ fontSize: 12 }}>
+            Durée maximale escaladée (heures, 0 = illimité)
+            <br />
+            <input
+              type="number"
+              min={0}
+              value={blocking.blocking_ttl_max_hours}
+              onChange={(e) =>
+                setBlocking({ ...blocking, blocking_ttl_max_hours: Number(e.target.value) })
+              }
+            />
+          </label>
+        </div>
         {blockMessage && <p className="muted">{blockMessage}</p>}
         {blockError && <p className="error">{blockError}</p>}
         {blocked.length > 0 && (

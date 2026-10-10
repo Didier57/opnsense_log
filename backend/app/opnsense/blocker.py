@@ -11,7 +11,7 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from ..storage.database import get_database
-from ..detection.blocking_store import get_blocking_settings
+from ..detection.blocking_store import get_blocking_settings, set_detected_skip_tables
 from ..notifications.blocking_mail import send_block_notification
 from .api_client import APIError, OPNsenseAPI
 from .settings_store import get_opnsense_settings
@@ -19,7 +19,24 @@ from .ssh import OPNsenseSSH, SSHError
 
 logger = logging.getLogger("opnsense.blocking")
 
-_BLOCKABLE_RULES = {"bruteforce", "port_scan"}
+_BLOCKABLE_RULES = {"bruteforce", "port_scan", "bruteforce_service", "horizontal_scan"}
+
+# Substrings that mark a pf table as an existing block list (CrowdSec, Q-Feeds,
+# Spamhaus, DShield...). Such tables are auto-added to the skip list so an IP
+# they already block is never blocked (or notified) a second time.
+_AUTO_TABLE_PATTERNS = (
+    "crowdsec",
+    "qfeeds",
+    "q_feed",
+    "spamhaus",
+    "dshield",
+    "firehol",
+    "blocklist",
+    "blacklist",
+    "block",
+    "abuse",
+    "drop",
+)
 
 
 def _api() -> OPNsenseAPI:
@@ -69,12 +86,62 @@ def _is_blockable(ip: str, nets: list) -> bool:
 
 
 def _skip_tables(cfg: dict) -> list[str]:
-    """Names of pf tables / aliases an IP may already be blocked by."""
-    tables = []
-    for token in re.split(r"[,\s]+", str(cfg.get("blocking_skip_tables") or "")):
+    """Names of pf tables / aliases an IP may already be blocked by.
+
+    Merges the user-configured list with the tables auto-detected on the
+    firewall (``blocking_skip_tables_detected``).
+    """
+    raw = f"{cfg.get('blocking_skip_tables') or ''} {cfg.get('blocking_skip_tables_detected') or ''}"
+    tables: list[str] = []
+    for token in re.split(r"[,\s]+", raw):
         token = token.strip()
-        if token and re.fullmatch(r"[A-Za-z0-9_.\-]+", token):
+        if token and re.fullmatch(r"[A-Za-z0-9_.\-]+", token) and token not in tables:
             tables.append(token)
+    return tables
+
+
+def detect_block_tables() -> list[str]:
+    """List the pf tables on OPNsense that look like existing block lists.
+
+    Best-effort: any SSH problem returns an empty list so blocking keeps working.
+    """
+    cfg = get_opnsense_settings(mask_password=False)
+    if not cfg.get("opnsense_host"):
+        return []
+    try:
+        ssh = OPNsenseSSH(
+            host=cfg["opnsense_host"],
+            port=cfg["opnsense_ssh_port"],
+            username=cfg["opnsense_username"],
+            auth_type=cfg["opnsense_auth_type"],
+            password=cfg.get("opnsense_password"),
+            key_path=cfg["opnsense_key_path"],
+        )
+        output = ssh.run("pfctl -sTables 2>/dev/null")
+    except SSHError as exc:
+        logger.warning("Could not list pf tables: %s", exc)
+        return []
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not list pf tables")
+        return []
+    tables: list[str] = []
+    for line in output.splitlines():
+        name = line.strip()
+        if not name or not re.fullmatch(r"[A-Za-z0-9_.\-]+", name):
+            continue
+        low = name.lower()
+        if any(pattern in low for pattern in _AUTO_TABLE_PATTERNS) and name not in tables:
+            tables.append(name)
+    return tables
+
+
+def refresh_detected_tables() -> list[str]:
+    """Detect pf block tables on the firewall and persist them for the skip list."""
+    tables = detect_block_tables()
+    try:
+        set_detected_skip_tables(tables)
+    except Exception:  # noqa: BLE001 - detection must not break anything
+        logger.exception("Could not persist detected block tables")
     return tables
 
 
@@ -114,20 +181,34 @@ def _already_blocked(ips: list[str], tables: list[str]) -> set[str]:
     return found & set(ips)
 
 
-def _record_blocked(ips: list[str], rule: str, source: str, ttl_hours: int) -> None:
+def _record_blocked(
+    ips: list[str],
+    rule: str,
+    source: str,
+    ttl_hours: int,
+    escalate: bool = False,
+    max_hours: int = 0,
+) -> None:
     if not ips:
         return
-    expires = None
-    if ttl_hours and ttl_hours > 0:
-        expires = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
     db = get_database()
+    now = datetime.now(timezone.utc)
     for ip in ips:
+        row = db.execute_read('SELECT "hits" FROM blocked_ips WHERE "ip" = ?', [ip]).fetchone()
+        hits = (int(row[0]) if row and row[0] is not None else 0) + 1
+        expires = None
+        if ttl_hours and ttl_hours > 0:
+            hours = ttl_hours * hits if escalate else ttl_hours
+            if max_hours and max_hours > 0:
+                hours = min(hours, max_hours)
+            expires = now + timedelta(hours=hours)
         db.execute_write(
-            'INSERT INTO blocked_ips ("ip", "rule", "source", "added_at", "expires_at") '
-            "VALUES (?, ?, ?, now(), ?) ON CONFLICT (\"ip\") DO UPDATE SET "
+            'INSERT INTO blocked_ips ("ip", "rule", "source", "added_at", "expires_at", "hits") '
+            "VALUES (?, ?, ?, now(), ?, ?) ON CONFLICT (\"ip\") DO UPDATE SET "
             '"rule" = excluded."rule", "source" = excluded."source", '
-            '"added_at" = excluded."added_at", "expires_at" = excluded."expires_at"',
-            [ip, rule, source, expires],
+            '"added_at" = excluded."added_at", "expires_at" = excluded."expires_at", '
+            '"hits" = excluded."hits"',
+            [ip, rule, source, expires, hits],
         )
 
 
@@ -160,6 +241,18 @@ def apply_ips(ips: list[str], rule: str = "", source: str = "manual", reasons: d
             "message": "IP déjà bloquée par une autre liste",
         }
 
+    if cfg.get("blocking_dry_run"):
+        logger.info("Blocking dry-run: %d IP(s) would be blocked", len(wanted))
+        return {
+            "ok": True,
+            "dry_run": True,
+            "added": [],
+            "would_block": wanted,
+            "skipped": sorted(already),
+            "alias": alias,
+            "message": "Mode simulation : aucune IP n'a été bloquée",
+        }
+
     api = _api()
     if not api.is_configured():
         return {"ok": False, "error": "Clé API OPNsense non configurée", "added": []}
@@ -179,7 +272,14 @@ def apply_ips(ips: list[str], rule: str = "", source: str = "manual", reasons: d
     except APIError as exc:
         return {"ok": False, "error": str(exc), "added": []}
 
-    _record_blocked(added, rule, source, int(cfg.get("blocking_ttl_hours", 0) or 0))
+    _record_blocked(
+        added,
+        rule,
+        source,
+        int(cfg.get("blocking_ttl_hours", 0) or 0),
+        escalate=bool(cfg.get("blocking_escalate", False)),
+        max_hours=int(cfg.get("blocking_ttl_max_hours", 0) or 0),
+    )
     if added and cfg.get("blocking_notify_email", True):
         try:
             send_block_notification(
@@ -275,3 +375,38 @@ def list_blocked() -> list[dict]:
         {"ip": r[0], "rule": r[1], "source": r[2], "added_at": r[3], "expires_at": r[4]}
         for r in rows
     ]
+
+
+def reconcile_alias() -> dict:
+    """Re-add IPs recorded as blocked but missing from the firewall alias.
+
+    Detects drift (e.g. after an OPNsense reboot cleared the alias) and re-applies
+    the recorded, non-expired blocks. Never removes anything.
+    """
+    cfg = get_blocking_settings()
+    alias = str(cfg.get("blocking_alias") or "").strip()
+    if not cfg.get("blocking_enabled") or not alias:
+        return {"ok": True, "reconciled": 0}
+    rows = get_database().execute_read(
+        'SELECT "ip" FROM blocked_ips WHERE "expires_at" IS NULL OR "expires_at" > now()'
+    ).fetchall()
+    desired = [r[0] for r in rows if r[0]]
+    if not desired:
+        return {"ok": True, "reconciled": 0}
+    api = _api()
+    if not api.is_configured():
+        return {"ok": False, "error": "Clé API OPNsense non configurée", "reconciled": 0}
+    try:
+        row, content = api.get_alias_content(alias)
+        existing = set(content)
+        missing = [ip for ip in desired if ip not in existing]
+        if missing:
+            if row is None:
+                api.ensure_host_alias(alias, missing)
+            else:
+                api.set_alias_content(row, content + missing)
+            api.reconfigure()
+            logger.info("Reconciled %d missing IP(s) into alias '%s'", len(missing), alias)
+        return {"ok": True, "reconciled": len(missing), "missing": missing, "alias": alias}
+    except APIError as exc:
+        return {"ok": False, "error": str(exc), "reconciled": 0}

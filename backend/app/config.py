@@ -76,6 +76,16 @@ class Settings(BaseSettings):
     # IDS...). Comma or space separated. An IP already present in one of these is
     # not blocked again and no notification is sent.
     blocking_skip_tables: str = "crowdsec_blacklists, crowdsec6_blacklists"
+    # pf tables detected automatically on the firewall (``pfctl -sTables``) whose
+    # name looks like an existing block list. Merged with ``blocking_skip_tables``
+    # so an IP already blocked by another plugin is never blocked twice.
+    blocking_skip_tables_detected: str = ""
+    # Simulation mode: compute what would be blocked but never touch the alias.
+    blocking_dry_run: bool = False
+    # Increase the block duration on repeat offences (TTL * number of offences).
+    blocking_escalate: bool = False
+    # Upper bound (hours) for escalated durations (0 = no cap).
+    blocking_ttl_max_hours: int = 720
 
     # --- Auth ---
     auth_enabled: bool = True
@@ -105,6 +115,12 @@ class Settings(BaseSettings):
     detection_portscan_window_sec: int = 60
     detection_bruteforce_count: int = 20
     detection_bruteforce_window_sec: int = 120
+    # Repeated blocks against the SAME destination port (service brute-force).
+    detection_bruteforce_service_count: int = 5
+    # Same source hitting many distinct destination hosts in the window
+    # (horizontal / network scan).
+    detection_horizontalscan_hosts: int = 15
+    detection_horizontalscan_window_sec: int = 60
     detection_spike_threshold: int = 300
     detection_spike_window_sec: int = 60
     # Traffic-spike alerts are noisy and off by default.

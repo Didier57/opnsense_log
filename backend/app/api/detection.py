@@ -8,7 +8,14 @@ from ..detection.engine import clear_alerts, list_alerts, run_cycle
 from ..detection.store import get_detection_settings, update_detection_settings
 from ..notifications.mailer import send_test_email
 from ..notifications.store import get_smtp_settings, update_smtp_settings
-from ..opnsense.blocker import apply_ips, list_blocked, prune_expired, unblock_ips
+from ..opnsense.blocker import (
+    apply_ips,
+    list_blocked,
+    prune_expired,
+    reconcile_alias,
+    refresh_detected_tables,
+    unblock_ips,
+)
 from .deps import require_user
 from .schemas import BlockingSettings, BlockRequest, DetectionSettings, NotificationSettings
 
@@ -68,6 +75,19 @@ def get_blocking(user: str = Depends(require_user)) -> dict:
 @router.put("/settings/blocking")
 def put_blocking(payload: BlockingSettings, user: str = Depends(require_user)) -> dict:
     return update_blocking_settings(payload.model_dump(exclude_none=True))
+
+
+@router.post("/settings/blocking/detect-tables")
+def detect_blocking_tables(user: str = Depends(require_user)) -> dict:
+    """Detect the pf block tables present on the firewall (CrowdSec, Q-Feeds...)."""
+    tables = refresh_detected_tables()
+    return {"ok": True, "tables": tables, "settings": get_blocking_settings()}
+
+
+@router.post("/settings/blocking/reconcile")
+def reconcile_blocking(user: str = Depends(require_user)) -> dict:
+    """Re-add recorded blocks missing from the firewall alias (drift repair)."""
+    return reconcile_alias()
 
 
 @router.get("/blocking/list")

@@ -37,6 +37,8 @@ def _raise_thresholds(**overrides) -> None:
     payload = {
         "detection_portscan_ports": 3,
         "detection_bruteforce_count": 3,
+        "detection_bruteforce_service_count": 100000,
+        "detection_horizontalscan_hosts": 100000,
         "detection_spike_threshold": 100000,
     }
     payload.update(overrides)
@@ -64,6 +66,41 @@ def test_bruteforce_alert(db):
     EventRepository(db).insert_events([_event(action="block") for _ in range(3)])
     alerts = deng.run_cycle()
     assert any(a["rule"] == "bruteforce" for a in alerts)
+
+
+def test_bruteforce_service_alert(db):
+    _raise_thresholds(
+        detection_portscan_ports=100000,
+        detection_bruteforce_count=100000,
+        detection_bruteforce_service_count=3,
+    )
+    EventRepository(db).insert_events([_event(action="block", dst_port=22) for _ in range(3)])
+    alerts = deng.run_cycle()
+    assert any(a["rule"] == "bruteforce_service" for a in alerts)
+
+
+def test_horizontal_scan_alert(db):
+    _raise_thresholds(
+        detection_portscan_ports=100000,
+        detection_bruteforce_count=100000,
+        detection_bruteforce_service_count=100000,
+        detection_horizontalscan_hosts=3,
+    )
+    EventRepository(db).insert_events([_event(dst_ip=f"9.9.9.{i}") for i in range(3)])
+    alerts = deng.run_cycle()
+    assert any(a["rule"] == "horizontal_scan" for a in alerts)
+
+
+def test_horizontal_scan_ignores_repeated_host(db):
+    _raise_thresholds(
+        detection_portscan_ports=100000,
+        detection_bruteforce_count=100000,
+        detection_bruteforce_service_count=100000,
+        detection_horizontalscan_hosts=3,
+    )
+    # Same destination three times is not a horizontal scan.
+    EventRepository(db).insert_events([_event(dst_ip="9.9.9.9") for _ in range(3)])
+    assert not any(a["rule"] == "horizontal_scan" for a in deng.run_cycle())
 
 
 def test_traffic_spike_alert(db):

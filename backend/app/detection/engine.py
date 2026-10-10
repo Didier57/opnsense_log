@@ -163,6 +163,84 @@ def _detect_bruteforce(cfg: dict, floor: datetime | None = None) -> list[dict]:
     return alerts
 
 
+def _detect_bruteforce_service(cfg: dict, floor: datetime | None = None) -> list[dict]:
+    """Repeated blocks against the same destination port (service brute-force)."""
+    window = cfg["detection_bruteforce_window_sec"]
+    cutoff = _window_start(window, floor)
+    rows = _rows(
+        """
+        SELECT "src_ip", "dst_port", COUNT(*) AS attempts, MAX("event_time") AS last_seen
+        FROM events
+        WHERE "event_time" >= ? AND "src_ip" <> '' AND "dst_port" IS NOT NULL
+              AND lower("action") IN ('block', 'reject')
+        GROUP BY 1, 2
+        HAVING COUNT(*) >= ?
+        ORDER BY attempts DESC
+        LIMIT ?
+        """,
+        [cutoff, cfg["detection_bruteforce_service_count"], _MAX_PER_RULE],
+    )
+    bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
+    alerts = []
+    for src_ip, dst_port, attempts, last_seen in rows:
+        if _skip_source(cfg, src_ip):
+            continue
+        alerts.append(
+            {
+                "id": f"bruteforce_service:{src_ip}:{dst_port}:{bucket}",
+                "rule": "bruteforce_service",
+                "severity": "critical",
+                "src_ip": src_ip,
+                "event_time": last_seen,
+                "title": "Force brute sur un service",
+                "message": f"{src_ip} a été bloqué {attempts} fois sur le port {dst_port} en {window}s",
+                "details": {
+                    "attempts": attempts,
+                    "dst_port": dst_port,
+                    "window_sec": window,
+                    "event_time": _iso(last_seen),
+                },
+            }
+        )
+    return alerts
+
+
+def _detect_horizontal_scan(cfg: dict, floor: datetime | None = None) -> list[dict]:
+    """One source contacting many distinct destination hosts (network scan)."""
+    window = cfg["detection_horizontalscan_window_sec"]
+    cutoff = _window_start(window, floor)
+    rows = _rows(
+        """
+        SELECT "src_ip", COUNT(DISTINCT "dst_ip") AS hosts, MAX("event_time") AS last_seen
+        FROM events
+        WHERE "event_time" >= ? AND "src_ip" <> '' AND "dst_ip" <> ''
+        GROUP BY 1
+        HAVING COUNT(DISTINCT "dst_ip") >= ?
+        ORDER BY hosts DESC
+        LIMIT ?
+        """,
+        [cutoff, cfg["detection_horizontalscan_hosts"], _MAX_PER_RULE],
+    )
+    bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
+    alerts = []
+    for src_ip, hosts, last_seen in rows:
+        if _skip_source(cfg, src_ip):
+            continue
+        alerts.append(
+            {
+                "id": f"horizontal_scan:{src_ip}:{bucket}",
+                "rule": "horizontal_scan",
+                "severity": "warning",
+                "src_ip": src_ip,
+                "event_time": last_seen,
+                "title": "Balayage réseau détecté",
+                "message": f"{src_ip} a contacté {hosts} hôtes distincts en {window}s",
+                "details": {"hosts": hosts, "window_sec": window, "event_time": _iso(last_seen)},
+            }
+        )
+    return alerts
+
+
 def _detect_spike(cfg: dict, floor: datetime | None = None) -> list[dict]:
     if not cfg.get("detection_spike_enabled", False):
         return []
@@ -224,7 +302,13 @@ def run_cycle() -> list[dict]:
     _first_cycle = False
 
     candidates: list[dict] = []
-    for detector in (_detect_port_scan, _detect_bruteforce, _detect_spike):
+    for detector in (
+        _detect_port_scan,
+        _detect_bruteforce,
+        _detect_bruteforce_service,
+        _detect_horizontal_scan,
+        _detect_spike,
+    ):
         try:
             candidates.extend(detector(cfg, floor))
         except Exception:  # noqa: BLE001

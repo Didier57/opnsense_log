@@ -173,6 +173,17 @@ class OPNSenseSync:
             logger.exception("Failed to store OPNsense config")
             return {"ok": False, "error": f"storage error: {exc}"}
 
+        # Detect pf tables that already block IPs (CrowdSec, Q-Feeds...) so the
+        # automatic blocking never duplicates an existing block.
+        try:
+            from .blocker import refresh_detected_tables
+
+            detected = refresh_detected_tables()
+            if detected:
+                logger.info("Detected %d existing block table(s): %s", len(detected), ", ".join(detected))
+        except Exception:  # noqa: BLE001 - detection is best-effort
+            logger.exception("Could not detect existing block tables")
+
         logger.info(
             "%s interfaces loaded, %s firewall rules loaded, %s DHCP leases loaded",
             len(interfaces), len(rules), len(leases),

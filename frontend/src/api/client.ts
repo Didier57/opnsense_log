@@ -207,6 +207,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ ips: [ip] }),
     }),
+  detectBlockTables: () =>
+    request<{ ok: boolean; tables: string[]; settings: Record<string, unknown> }>(
+      "/api/settings/blocking/detect-tables",
+      { method: "POST" },
+    ),
+  reconcileBlocking: () =>
+    request<{ ok: boolean; reconciled: number; missing?: string[]; error?: string }>(
+      "/api/settings/blocking/reconcile",
+      { method: "POST" },
+    ),
 
   alerts: (limit = 200, offset = 0) =>
     request<{ total: number; limit: number; offset: number; items: Alert[] }>(

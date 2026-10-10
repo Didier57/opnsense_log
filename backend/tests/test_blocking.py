@@ -1,6 +1,8 @@
 """Tests for the automatic blocking (OPNsense alias) feature."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 
 from app.storage.database import Database
@@ -96,6 +98,95 @@ def test_skip_tables_parsing():
         "crowdsec6_blacklists",
     ]
     assert blocker._skip_tables({"blocking_skip_tables": ""}) == []
+    # Auto-detected tables are merged in and de-duplicated.
+    assert blocker._skip_tables(
+        {"blocking_skip_tables": "a, b", "blocking_skip_tables_detected": "c b"}
+    ) == ["a", "b", "c"]
+
+
+def test_detect_block_tables_filters_names(monkeypatch):
+    class FakeSSH:
+        def __init__(self, **kwargs):
+            pass
+
+        def run(self, command):
+            return "crowdsec_blacklists\nqfeeds4\nlo0\nBLOCK_IP\nrandomtable\n"
+
+    monkeypatch.setattr(blocker, "OPNsenseSSH", FakeSSH)
+    monkeypatch.setattr(
+        blocker,
+        "get_opnsense_settings",
+        lambda mask_password=False: {"opnsense_host": "h", "opnsense_ssh_port": 22,
+                                     "opnsense_username": "root", "opnsense_auth_type": "password",
+                                     "opnsense_key_path": ""},
+    )
+    tables = blocker.detect_block_tables()
+    assert "crowdsec_blacklists" in tables
+    assert "qfeeds4" in tables
+    assert "BLOCK_IP" in tables
+    assert "lo0" not in tables
+    assert "randomtable" not in tables
+
+
+def test_apply_ips_dry_run_does_not_touch_alias(database, monkeypatch):
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg(blocking_dry_run=True))
+    fake = FakeAPI()
+    monkeypatch.setattr(blocker, "_api", lambda: fake)
+
+    result = blocker.apply_ips(["1.2.3.4"])
+    assert result["dry_run"] is True
+    assert result["would_block"] == ["1.2.3.4"]
+    assert result["added"] == []
+    assert fake.rows == {}
+    assert blocker.list_blocked() == []
+
+
+def test_record_blocked_escalates_ttl(database):
+    blocker._record_blocked(["1.2.3.4"], "detection", "auto", 1, escalate=True, max_hours=10)
+    blocker._record_blocked(["1.2.3.4"], "detection", "auto", 1, escalate=True, max_hours=10)
+    hits, expires = database.execute_read(
+        'SELECT "hits", "expires_at" FROM blocked_ips WHERE "ip" = ?', ["1.2.3.4"]
+    ).fetchone()
+    assert hits == 2
+    assert expires is not None
+
+
+def test_record_blocked_escalation_capped(database):
+    blocker._record_blocked(["1.2.3.4"], "detection", "auto", 5, escalate=True, max_hours=6)
+    blocker._record_blocked(["1.2.3.4"], "detection", "auto", 5, escalate=True, max_hours=6)
+    expires = database.execute_read(
+        'SELECT "expires_at" FROM blocked_ips WHERE "ip" = ?', ["1.2.3.4"]
+    ).fetchone()[0]
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    # 5h * 2 = 10h capped at 6h.
+    delta = expires - datetime.now(timezone.utc)
+    assert 5.5 <= delta.total_seconds() / 3600 <= 6.5
+
+
+def test_reconcile_alias_readds_missing(database, monkeypatch):
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg(blocking_enabled=True))
+    fake = FakeAPI({"BLOCK": {"uuid": "u1", "name": "BLOCK", "type": "host", "enabled": "1", "content": ["5.6.7.8"]}})
+    monkeypatch.setattr(blocker, "_api", lambda: fake)
+    database.execute_write(
+        'INSERT INTO blocked_ips ("ip", "rule", "source", "added_at", "expires_at", "hits") '
+        "VALUES ('1.2.3.4', 'detection', 'auto', now(), NULL, 1)"
+    )
+
+    result = blocker.reconcile_alias()
+    assert result["ok"] is True
+    assert result["reconciled"] == 1
+    assert "1.2.3.4" in fake.rows["BLOCK"]["content"]
+    assert fake.reconfig == 1
+
+
+def test_reconcile_alias_disabled_is_noop(database, monkeypatch):
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg(blocking_enabled=False))
+    fake = FakeAPI()
+    monkeypatch.setattr(blocker, "_api", lambda: fake)
+    result = blocker.reconcile_alias()
+    assert result == {"ok": True, "reconciled": 0}
+    assert fake.rows == {}
 
 
 def test_apply_ips_skips_already_blocked(database, monkeypatch):

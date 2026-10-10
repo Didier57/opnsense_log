@@ -4,10 +4,16 @@ from __future__ import annotations
 from ..config import settings
 from ..storage.database import get_database
 
-_STR_KEYS = ["blocking_alias", "blocking_mode", "blocking_whitelist", "blocking_skip_tables"]
-_BOOL_KEYS = ["blocking_enabled", "blocking_notify_email"]
-_INT_KEYS = ["blocking_ttl_hours", "blocking_token_days"]
-_MINIMUMS = {"blocking_ttl_hours": 0, "blocking_token_days": 1}
+_STR_KEYS = [
+    "blocking_alias",
+    "blocking_mode",
+    "blocking_whitelist",
+    "blocking_skip_tables",
+    "blocking_skip_tables_detected",
+]
+_BOOL_KEYS = ["blocking_enabled", "blocking_notify_email", "blocking_dry_run", "blocking_escalate"]
+_INT_KEYS = ["blocking_ttl_hours", "blocking_token_days", "blocking_ttl_max_hours"]
+_MINIMUMS = {"blocking_ttl_hours": 0, "blocking_token_days": 1, "blocking_ttl_max_hours": 0}
 _KEYS = _BOOL_KEYS + _STR_KEYS + _INT_KEYS
 
 
@@ -61,3 +67,18 @@ def update_blocking_settings(payload: dict) -> dict:
                 [key, str(value)],
             )
     return get_blocking_settings()
+
+
+def set_detected_skip_tables(names: list[str]) -> list[str]:
+    """Persist the pf tables auto-detected on the firewall (not user-editable)."""
+    clean: list[str] = []
+    for name in names:
+        name = str(name or "").strip()
+        if name and name not in clean:
+            clean.append(name)
+    get_database().execute_write(
+        'INSERT INTO app_settings ("key", "value", "updated_at") VALUES (?, ?, now()) '
+        'ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value", "updated_at" = excluded."updated_at"',
+        ["blocking_skip_tables_detected", ", ".join(clean)],
+    )
+    return clean

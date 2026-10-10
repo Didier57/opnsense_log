@@ -124,6 +124,26 @@ async def _filterlog_heartbeat_loop() -> None:
         await asyncio.sleep(30)
 
 
+async def _blocking_reconcile_once() -> None:
+    """Re-apply recorded blocks that are missing from the firewall alias.
+
+    Repairs drift after a restart (e.g. an OPNsense reboot cleared the alias).
+    """
+    try:
+        from .detection.blocking_store import get_blocking_settings
+        from .opnsense.blocker import reconcile_alias
+
+        cfg = get_blocking_settings()
+        if not cfg.get("blocking_enabled") or cfg.get("blocking_dry_run"):
+            return
+        await asyncio.sleep(30)
+        result = await asyncio.to_thread(reconcile_alias)
+        if result.get("reconciled"):
+            logger.info("Startup blocking reconciliation restored %d IP(s)", result["reconciled"])
+    except Exception:  # noqa: BLE001 - never break startup
+        logger.exception("Startup blocking reconciliation failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
@@ -145,6 +165,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(geo_update_loop(), name="geoip"),
         asyncio.create_task(_startup_filterlog_import(), name="filterlog-import"),
         asyncio.create_task(_filterlog_heartbeat_loop(), name="filterlog-heartbeat"),
+        asyncio.create_task(_blocking_reconcile_once(), name="blocking-reconcile"),
     ]
     yield
     logger.info("Shutting down")
