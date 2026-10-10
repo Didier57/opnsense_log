@@ -73,8 +73,8 @@ echo "SECRET=" . $secret . "\n";
 """
 
 
-def _build_ssh() -> OPNsenseSSH:
-    cfg = get_opnsense_settings(mask_password=False)
+def _build_ssh(instance_id: str | None = None) -> OPNsenseSSH:
+    cfg = get_opnsense_settings(mask_password=False, instance_id=instance_id)
     return OPNsenseSSH(
         host=cfg["opnsense_host"],
         port=cfg["opnsense_ssh_port"],
@@ -85,7 +85,7 @@ def _build_ssh() -> OPNsenseSSH:
     )
 
 
-def generate_api_key(username: str = "root") -> dict:
+def generate_api_key(username: str = "root", instance_id: str | None = None) -> dict:
     """Create an OPNsense API key for ``username`` over SSH.
 
     Returns ``{"ok": bool, "key"?, "secret"?, "error"?}``.
@@ -99,7 +99,7 @@ def generate_api_key(username: str = "root") -> dict:
         "rm -f /tmp/ola_apikey.php'"
     )
     try:
-        ssh = _build_ssh()
+        ssh = _build_ssh(instance_id)
         output, stderr = ssh.run_capture(command)
     except SSHError as exc:
         logger.warning("API key generation failed: %s", exc)

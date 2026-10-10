@@ -88,7 +88,7 @@ def generate_opnsense_api_key(
     cfg = get_opnsense_settings(mask_password=False, instance_id=instance)
     if not cfg.get("opnsense_host"):
         return {"ok": False, "message": "OPNsense host not configured"}
-    result = generate_api_key(cfg.get("opnsense_username") or "root")
+    result = generate_api_key(cfg.get("opnsense_username") or "root", instance_id=instance)
     if not result.get("ok"):
         return {"ok": False, "message": result.get("error", "generation failed")}
     update_opnsense_settings(
