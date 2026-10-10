@@ -117,6 +117,20 @@ Le stockage utilise **DuckDB** (colonnes, adapté à l'analytique, mono-fichier,
 Les données sont stockées dans le volume Docker nommé `opnsense_logs` et **persistent donc
 entre `docker compose down` / `up`**.
 
+### Plusieurs OPNsense (multi-instance)
+
+L'application gère plusieurs pare-feu indépendants. Chaque instance possède sa propre base
+de données, sa configuration (SSH, API, détection, blocage) et **son propre port syslog**
+(5140 pour la première, puis 5141, 5142…). Seule la configuration e-mail (SMTP) est commune.
+
+- Créez/renommez les instances dans **Paramètres → Instances**.
+- dans `docker-compose.yml`, une **plage de ports** est publiée (`SYSLOG_PORT_START` à
+  `SYSLOG_PORT_END`) pour rendre toutes les instances joignables ; élargissez-la selon le
+  nombre de pare-feu prévus.
+- Dans chaque OPNsense, envoyez les journaux vers le port affiché pour son instance
+  (colonne « port » de la page Instances).
+- Un sélecteur en haut de la page permet de basculer d'une instance à l'autre.
+
 ### Mise à jour
 
 ```bash
@@ -130,7 +144,9 @@ Toute la configuration se fait via des variables d'environnement (voir `.env.exa
 | Variable | Défaut | Description |
 | --- | --- | --- |
 | `WEB_PORT` | `8080` | port HTTP de l'interface web / de l'API |
-| `SYSLOG_PORT` | `5140` | port d'écoute syslog |
+| `SYSLOG_PORT` | `5140` | premier port d'écoute syslog (les instances suivantes utilisent 5141, 5142…) |
+| `SYSLOG_PORT_START` | `5140` | début de la plage de ports publiée par docker-compose |
+| `SYSLOG_PORT_END` | `5160` | fin de la plage de ports publiée par docker-compose |
 | `SYSLOG_PROTOCOL` | `udp` | `udp`, `tcp` ou `both` |
 | `DATA_DIR` | `/data` | répertoire de données (monter un volume ici) |
 | `LOG_RETENTION_DAYS` | `30` | rétention en jours (`0` = illimitée) |
@@ -204,11 +220,13 @@ Déjà implémenté au-delà de la V1 :
 - **Recherche de noms d'hôtes** — DNS inverse et noms des baux DHCP/Dnsmasq.
 - **Import des journaux OPNsense** — rattrapage des événements manquants par SSH.
 - **Historique des changements de règles**.
+- **Multi-OPNsense** — plusieurs pare-feu gérés en parallèle (bases, ports syslog et
+  configurations séparés, sélecteur d'instance), e-mail partagé.
 
 Encore prévu :
 
 - **V2** — statistiques avancées, alias, export Excel, webhooks, API complète documentée,
-  multi-OPNsense, multi-utilisateur, LDAP/OIDC.
+  multi-utilisateur, LDAP/OIDC.
 - **V3** — détection enrichie : détection d'anomalies, alertes IP / renseignement sur les
   menaces et corrélation d'événements.
 

@@ -8,11 +8,15 @@ services:
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-8080}:8080"
-      - "${SYSLOG_PORT:-5140}:5140/udp"
-      - "${SYSLOG_PORT:-5140}:5140/tcp"
+      # Multi-instance: each OPNsense gets its own syslog port (5140, 5141, ...).
+      # A contiguous range is published so every instance is reachable. Keep the
+      # range wide enough for the number of firewalls you plan to add.
+      - "${SYSLOG_PORT_START:-5140}-${SYSLOG_PORT_END:-5160}:${SYSLOG_PORT_START:-5140}-${SYSLOG_PORT_END:-5160}/udp"
+      - "${SYSLOG_PORT_START:-5140}-${SYSLOG_PORT_END:-5160}:${SYSLOG_PORT_START:-5140}-${SYSLOG_PORT_END:-5160}/tcp"
     environment:
       WEB_PORT: "8080"
-      SYSLOG_PORT: "${SYSLOG_PORT:-5140}"
+      # First syslog port; extra instances use the following ports.
+      SYSLOG_PORT: "${SYSLOG_PORT_START:-5140}"
       SYSLOG_PROTOCOL: "${SYSLOG_PROTOCOL:-udp}"
       DATA_DIR: "/data"
       LOG_RETENTION_DAYS: "${LOG_RETENTION_DAYS:-30}"
