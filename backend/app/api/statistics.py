@@ -62,6 +62,7 @@ def _aggregate_countries(
     limit: int,
     instance: str | None = None,
     blocked_counts: dict[str, int] | None = None,
+    sort_by: str = "count",
 ) -> list[dict]:
     resolved = geo_resolver.resolve(
         [item["value"] for item in items if item.get("value")], instance_id=instance
@@ -80,7 +81,7 @@ def _aggregate_countries(
             blocked = blocked_counts.get(item["value"], 0)
             entry["blocked"] = entry.get("blocked", 0) + blocked
             entry["passed"] = entry.get("passed", 0) + max(0, item["count"] - blocked)
-    return sorted(totals.values(), key=lambda entry: entry["count"], reverse=True)[:limit]
+    return sorted(totals.values(), key=lambda entry: entry.get(sort_by, 0), reverse=True)[:limit]
 
 
 @router.get("/countries")
@@ -98,10 +99,9 @@ def countries(
     """
     repo = EventRepository(instance_id=instance)
     started = time.perf_counter()
-    ips = repo.top_values("src_ip", start, end, 500)
-    blocked = repo.top_values("src_ip", start, end, 500, actions=["block", "reject"])
-    blocked_counts = {item["value"]: item["count"] for item in blocked if item.get("value")}
-    items = _aggregate_countries(ips, limit, instance, blocked_counts)
+    src = repo.top_with_blocked("src_ip", start, end, 500)
+    blocked_counts = {item["value"]: item["blocked"] for item in src if item.get("value")}
+    items = _aggregate_countries(src, limit, instance, blocked_counts)
     _note("countries", started)
     return {"items": items}
 
@@ -124,23 +124,33 @@ def overview(
     """Dashboard overview: top countries plus top internal/external IPs."""
     repo = EventRepository(instance_id=instance)
     started = time.perf_counter()
-    src = repo.top_values("src_ip", start, end, 500)
+    src = repo.top_with_blocked("src_ip", start, end, 500)
     dst = repo.top_values("dst_ip", start, end, 500)
-    blocked = repo.top_values("src_ip", start, end, 500, actions=["block", "reject"])
+    blocked_counts = {item["value"]: item["blocked"] for item in src if item.get("value")}
     src_external = [item for item in src if not _is_internal(item.get("value"))][:10]
     src_internal = [item for item in src if _is_internal(item.get("value"))][:10]
     dst_external = [item for item in dst if not _is_internal(item.get("value"))][:10]
     dst_internal = [item for item in dst if _is_internal(item.get("value"))][:10]
 
     result = {
-        "countries": _aggregate_countries(src, 10, instance),
+        "countries": _aggregate_countries(src, 10, instance, blocked_counts),
         "dst_countries": _aggregate_countries(dst, 10, instance),
-        "countries_blocked": _aggregate_countries(blocked, 10, instance),
+        "countries_blocked": _aggregate_countries(
+            src, 10, instance, blocked_counts, sort_by="blocked"
+        ),
         "src_external": src_external,
         "src_internal": src_internal,
         "dst_external": dst_external,
         "dst_internal": dst_internal,
-        "blocked_ips": repo.top_values("src_ip", start, end, 10, actions=["block", "reject"]),
+        "blocked_ips": sorted(
+            (
+                {"value": item["value"], "count": item["blocked"]}
+                for item in src
+                if item.get("blocked")
+            ),
+            key=lambda entry: entry["count"],
+            reverse=True,
+        )[:10],
         "src_ports": repo.top_values("src_port", start, end, 10),
         "dst_ports": repo.top_values("dst_port", start, end, 10),
         "directions": repo.top_values("direction", start, end, 10),

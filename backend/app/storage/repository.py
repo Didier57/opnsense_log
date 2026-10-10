@@ -37,6 +37,19 @@ FILTER_FIELDS: dict[str, str] = {
 
 ALLOWED_OPS = {"eq", "ne", "contains", "not_contains", "regex", "in", "gt", "lt", "gte", "lte"}
 
+# Dimensions usable by the statistics endpoints (quoted identifiers).
+_DIMENSION_COLUMNS: dict[str, str] = {
+    "src_ip": '"src_ip"',
+    "dst_ip": '"dst_ip"',
+    "dst_port": '"dst_port"',
+    "src_port": '"src_port"',
+    "protocol": '"protocol"',
+    "interface": '"interface"',
+    "rule_id": '"rule_id"',
+    "action": '"action"',
+    "direction": '"direction"',
+}
+
 
 def _event_row(event: FirewallEvent) -> tuple:
     row = event.to_row()
@@ -236,18 +249,7 @@ class EventRepository:
         limit: int = 10,
         actions: list[str] | None = None,
     ) -> list[dict]:
-        columns = {
-            "src_ip": '"src_ip"',
-            "dst_ip": '"dst_ip"',
-            "dst_port": '"dst_port"',
-            "src_port": '"src_port"',
-            "protocol": '"protocol"',
-            "interface": '"interface"',
-            "rule_id": '"rule_id"',
-            "action": '"action"',
-            "direction": '"direction"',
-        }
-        col = columns.get(dimension)
+        col = _DIMENSION_COLUMNS.get(dimension)
         if col is None:
             raise ValueError(f"invalid dimension: {dimension}")
         where, params = self.build_where(None, start=start, end=end)
@@ -257,6 +259,30 @@ class EventRepository:
             where += (" AND " if where else " WHERE ") + clause
             params = [*params, *[value.lower() for value in actions]]
         return self._top(col, where, params, limit)
+
+    def top_with_blocked(
+        self,
+        dimension: str,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 500,
+    ) -> list[dict]:
+        """Top values with their block/reject share computed in a single scan.
+
+        Returns ``{"value", "count", "blocked"}`` rows so callers avoid running a
+        second GROUP BY over the same (potentially large) time range.
+        """
+        col = _DIMENSION_COLUMNS.get(dimension)
+        if col is None:
+            raise ValueError(f"invalid dimension: {dimension}")
+        where, params = self.build_where(None, start=start, end=end)
+        rows = self.db.execute_read(
+            f"SELECT {col} AS value, COUNT(*) AS count, "
+            f'COUNT(*) FILTER (WHERE lower("action") IN (\'block\', \'reject\')) AS blocked '
+            f"FROM events{where} GROUP BY 1 ORDER BY count DESC LIMIT ?",
+            [*params, limit],
+        ).fetchall()
+        return [{"value": r[0], "count": r[1], "blocked": r[2]} for r in rows]
 
     def timeseries(
         self,
