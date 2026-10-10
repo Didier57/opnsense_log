@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, liveSocketUrl } from "../../api/client";
 import { StatCard } from "../../components/StatCard";
 import { BarList } from "../../components/Charts/BarList";
+import { PeriodPicker } from "../../components/PeriodPicker";
 import type { GeoItem, Overview, Summary, TopItem } from "../../types";
 
 const INTERVALS = [5, 10, 30, 60];
@@ -14,13 +15,15 @@ export function Dashboard() {
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const inflight = useRef(false);
+  const range = useRef<{ start?: string; end?: string }>({});
 
   const load = useCallback(async () => {
     if (inflight.current) return;
     inflight.current = true;
     setRefreshing(true);
     try {
-      const [s, ov] = await Promise.all([api.summary(), api.overview()]);
+      const { start, end } = range.current;
+      const [s, ov] = await Promise.all([api.summary(start, end), api.overview(start, end)]);
       setSummary(s);
       setOverview(ov);
       setUpdatedAt(new Date());
@@ -108,6 +111,14 @@ export function Dashboard() {
             {refreshing ? "…" : "Actualiser"}
           </button>
         </div>
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <PeriodPicker
+          onApply={(start, end) => {
+            range.current = { start, end };
+            load();
+          }}
+        />
       </div>
       <div className="cards">
         <StatCard label="Événements" value={summary?.total ?? 0} />
