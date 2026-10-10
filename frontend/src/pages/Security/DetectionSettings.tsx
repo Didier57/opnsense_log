@@ -248,6 +248,21 @@ export function DetectionSettings() {
     }
   };
 
+  const trustIp = async (ip: string) => {
+    setBlockMessage("");
+    setBlockError("");
+    try {
+      const allow = await api.addAllowlist([ip], "");
+      setAllowlist(allow.items);
+      const result = await api.unblockIp(ip);
+      if (!result.ok) throw new Error(result.error || "Échec du retrait");
+      setBlockMessage(`${ip} n'est plus bloquée et est désormais en liste blanche.`);
+      loadBlocked();
+    } catch (e) {
+      setBlockError(String(e));
+    }
+  };
+
   const addAllow = async () => {
     setBlockMessage("");
     setBlockError("");
@@ -510,6 +525,12 @@ export function DetectionSettings() {
                     <td className="mono">{row.added_at ? formatDateTime(row.added_at) : "—"}</td>
                     <td className="mono">{row.expires_at ? formatDateTime(row.expires_at) : "jamais"}</td>
                     <td>
+                      <button
+                        title="Retirer du blocage et ne plus jamais bloquer cette IP (liste blanche)"
+                        onClick={() => trustIp(row.ip)}
+                      >
+                        Ne jamais bloquer
+                      </button>{" "}
                       <button
                         title="Retirer cette IP de l'alias et de la liste"
                         onClick={() => unblockIp(row.ip)}
