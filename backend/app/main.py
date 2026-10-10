@@ -218,6 +218,76 @@ async def _ensure_indexes_once() -> None:
             logger.exception("Could not build event index (%s)", iid)
 
 
+def _diagnose_instance(instance_id: str) -> dict:
+    """Collect size/timing evidence to locate statistics slowness.
+
+    Compares a whole-table COUNT with a one-day COUNT (and a small day-range
+    GROUP BY) so we can tell a scan/pruning problem (day query ~ table query)
+    from a per-query fixed cost such as writer contention (both fast)."""
+    from datetime import datetime, timedelta, timezone
+
+    from .storage.database import get_database
+
+    db = get_database(instance_id)
+    info: dict = {}
+    for label, sql in (
+        ("db_size", "PRAGMA database_size"),
+        ("events_estimate", "SELECT estimated_size FROM duckdb_tables() WHERE table_name = 'events'"),
+    ):
+        try:
+            info[label] = db.execute_read(sql).fetchone()
+        except Exception as exc:  # noqa: BLE001
+            info[label] = f"error: {exc}"
+
+    def _timed(sql: str, params: list | None = None) -> tuple[object, float]:
+        started = time.monotonic()
+        value = db.execute_read(sql, params).fetchone()
+        return value, round(time.monotonic() - started, 3)
+
+    try:
+        value, seconds = _timed("SELECT COUNT(*) FROM events")
+        info["count_all"] = value[0]
+        info["seconds_all"] = seconds
+    except Exception as exc:  # noqa: BLE001
+        info["count_all_error"] = str(exc)
+
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=1)
+    try:
+        value, seconds = _timed(
+            'SELECT COUNT(*) FROM events WHERE "event_time" >= ? AND "event_time" < ?',
+            [start, end],
+        )
+        info["count_day"] = value[0]
+        info["seconds_day"] = seconds
+    except Exception as exc:  # noqa: BLE001
+        info["count_day_error"] = str(exc)
+    try:
+        _, seconds = _timed(
+            'SELECT "protocol", COUNT(*) FROM events '
+            'WHERE "event_time" >= ? AND "event_time" < ? GROUP BY 1 ORDER BY 2 DESC LIMIT 20',
+            [start, end],
+        )
+        info["seconds_top_day"] = seconds
+    except Exception as exc:  # noqa: BLE001
+        info["top_day_error"] = str(exc)
+    return info
+
+
+async def _diagnose_once() -> None:
+    """Log per-instance storage/timing diagnostics once, right after startup."""
+    await asyncio.sleep(20)
+    for inst in _instances():
+        iid = inst["id"]
+        try:
+            report = await asyncio.to_thread(_diagnose_instance, iid)
+        except Exception:  # noqa: BLE001
+            logger.exception("Diagnostics failed (%s)", iid)
+            continue
+        logger.info("Diagnostics (%s): %s", iid, report)
+
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
@@ -261,6 +331,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(_filterlog_heartbeat_loop(), name="filterlog-heartbeat"),
         asyncio.create_task(_blocking_reconcile_once(), name="blocking-reconcile"),
         asyncio.create_task(_ensure_indexes_once(), name="ensure-indexes"),
+        asyncio.create_task(_diagnose_once(), name="diagnose"),
     ]
     yield
     logger.info("Shutting down")
