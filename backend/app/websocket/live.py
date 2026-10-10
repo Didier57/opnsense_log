@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import asdict
 from datetime import date, datetime
 
@@ -57,15 +58,27 @@ class LiveHub:
     def subscriber_count(self) -> int:
         return len(self._subscribers)
 
-    async def handler(self, websocket: WebSocket, initial: list[dict] | None = None) -> None:
+    async def handler(
+        self,
+        websocket: WebSocket,
+        load_initial: Callable[[], list[dict]] | None = None,
+    ) -> None:
+        # Accept the connection first so the client switches to "connected"
+        # immediately, then load the (potentially slow) backlog in a worker
+        # thread. Events that arrive while the backlog is being read are already
+        # queued (we subscribe before the read) so none of them are lost, and
+        # live frames are only delayed by the backlog read, never blocked by it.
         await websocket.accept()
         queue = await self.subscribe()
         try:
-            # Prime the view with the most recent persisted events so the live
-            # table is not empty while waiting for new traffic. Sent as a single
-            # batched frame.
-            if initial:
-                await websocket.send_json([_json_safe(row) for row in initial])
+            if load_initial is not None:
+                try:
+                    initial = await asyncio.to_thread(load_initial)
+                except Exception:  # noqa: BLE001 - a bad backlog must not kill the stream
+                    logger.exception("Unable to load recent events for the live backlog")
+                    initial = []
+                if initial:
+                    await websocket.send_json([_json_safe(row) for row in initial])
             while True:
                 try:
                     payload = await asyncio.wait_for(queue.get(), timeout=_HEARTBEAT_SEC)

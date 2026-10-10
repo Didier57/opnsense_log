@@ -43,10 +43,14 @@ class _UDPProtocol(asyncio.DatagramProtocol):
 class SyslogServer:
     def __init__(self) -> None:
         self.queue: asyncio.Queue = asyncio.Queue(maxsize=settings.syslog_queue_maxsize)
+        # Parsed events are handed to a dedicated inserter so the parser workers
+        # (which also fan out to the live view) never wait on a database write.
+        self._insert_queue: asyncio.Queue = asyncio.Queue(maxsize=settings.syslog_queue_maxsize)
         self.repo = EventRepository()
         self._transports: list = []
         self._servers: list = []
         self._workers: list[asyncio.Task] = []
+        self._inserter: asyncio.Task | None = None
         self._hostnames: dict[str, str] = {}
         self._running = False
 
@@ -76,6 +80,7 @@ class SyslogServer:
 
         for i in range(max(1, settings.parser_workers)):
             self._workers.append(asyncio.create_task(self._worker(i), name=f"parser-{i}"))
+        self._inserter = asyncio.create_task(self._insert_loop(), name="db-inserter")
 
     async def _handle_tcp_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         peer = writer.get_extra_info("peername")
@@ -102,33 +107,55 @@ class SyslogServer:
                 pass
 
     async def _worker(self, worker_id: int) -> None:
-        batch: list = []
         while True:
-            timeout = settings.batch_flush_ms / 1000
             try:
-                if not batch:
-                    text, hostname = await self.queue.get()
-                    self._process(text, hostname, batch)
-                while len(batch) < settings.batch_size:
-                    try:
-                        text, hostname = await asyncio.wait_for(self.queue.get(), timeout=timeout)
-                        self._process(text, hostname, batch)
-                    except asyncio.TimeoutError:
-                        break
+                text, hostname = await self.queue.get()
+                self._process(text, hostname)
+            except asyncio.CancelledError:
+                raise
             except Exception:  # noqa: BLE001
                 logger.exception("Parser worker %s error", worker_id)
-            if batch:
-                await self._flush(batch)
-                batch = []
 
-    def _process(self, text: str, hostname: str, batch: list) -> None:
+    def _process(self, text: str, hostname: str) -> None:
         result = parse_message(text, hostname=hostname)
         if result.event is None:
             counters.incr_invalid()
             return
         counters.incr_parsed()
-        batch.append(result.event)
+        # Fan out to the live view immediately: this never touches the database,
+        # so a slow insert can no longer freeze the live stream.
         live_hub.publish(result.event)
+        try:
+            self._insert_queue.put_nowait(result.event)
+        except asyncio.QueueFull:
+            counters.incr_invalid()
+
+    async def _insert_loop(self) -> None:
+        """Batch parsed events and persist them, decoupled from the live stream.
+
+        A dedicated task drains the insert queue so a DuckDB write never blocks
+        the parser workers that feed the WebSocket subscribers.
+        """
+        batch: list = []
+        timeout = settings.batch_flush_ms / 1000
+        while True:
+            try:
+                if not batch:
+                    batch.append(await self._insert_queue.get())
+                while len(batch) < settings.batch_size:
+                    try:
+                        batch.append(
+                            await asyncio.wait_for(self._insert_queue.get(), timeout=timeout)
+                        )
+                    except asyncio.TimeoutError:
+                        break
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001
+                logger.exception("Insert loop error")
+            if batch:
+                await self._flush(batch)
+                batch = []
 
     async def _flush(self, batch: list) -> None:
         try:
@@ -140,6 +167,8 @@ class SyslogServer:
         self._running = False
         for task in self._workers:
             task.cancel()
+        if self._inserter is not None:
+            self._inserter.cancel()
         for server in self._servers:
             server.close()
         for transport in self._transports:
