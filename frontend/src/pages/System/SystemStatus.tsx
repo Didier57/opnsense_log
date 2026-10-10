@@ -2,6 +2,20 @@ import { useEffect, useState } from "react";
 import { api } from "../../api/client";
 import { StatCard } from "../../components/StatCard";
 
+function formatUptime(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const parts: string[] = [];
+  if (d) parts.push(`${d} j`);
+  if (d || h) parts.push(`${h} h`);
+  parts.push(`${m} min`);
+  parts.push(`${sec} s`);
+  return parts.join(" ");
+}
+
 export function SystemStatus() {
   const [status, setStatus] = useState<Record<string, any> | null>(null);
   const [monitoring, setMonitoring] = useState<Record<string, number> | null>(null);
@@ -44,7 +58,9 @@ export function SystemStatus() {
               <span className={`status-dot ${status.opnsense?.connected ? "ok" : "unknown"}`} /> OPNsense{" "}
               {status.opnsense?.connected ? "connecté" : "non connecté"}
             </li>
-            <li className="muted">Durée de fonctionnement {Math.round(monitoring?.uptime_seconds ?? 0)} s</li>
+            <li className="muted">
+              Durée de fonctionnement (application backend) {formatUptime(monitoring?.uptime_seconds ?? 0)}
+            </li>
           </ul>
         ) : (
           <p className="muted">Chargement…</p>

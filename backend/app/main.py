@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from .api import api_router
 from .config import settings
 from .core.logging import setup_logging
+from .core.stats import counters
 from .detection.engine import detection_loop
 from .geoip.resolver import geo_update_loop
 from .opnsense.settings_store import get_opnsense_settings
@@ -147,6 +149,9 @@ async def _blocking_reconcile_once() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
+    # Uptime shown in Système -> État measures the lifetime of the backend
+    # application (this process), starting from now.
+    counters.started_at = time.time()
     logger.info("Starting OPNsense Log Analyzer")
     # Bind the syslog socket *before* opening the database so that events start
     # flowing into the Live view immediately, even when opening a large DuckDB
