@@ -73,11 +73,12 @@ class Settings(BaseSettings):
     # Validity of the e-mail unblock link token (days).
     blocking_token_days: int = 7
     # pf tables / firewall aliases that already block IPs (CrowdSec, Q-Feeds,
-    # IDS...). Comma or space separated. An IP already present in one of these is
-    # not blocked again and no notification is sent.
-    blocking_skip_tables: str = (
-        "crowdsec_blacklists, crowdsec6_blacklists, crowdsec_blocklists, crowdsec6_blocklists"
-    )
+    # IDS...). Comma or space separated. Empty by default: the tables actually
+    # present on the firewall are detected automatically (see
+    # ``blocking_skip_tables_detected``, filled on each sync) and merged here, so
+    # no hard-coded CrowdSec name is needed. An IP already present in one of
+    # these is not blocked again and no notification is sent.
+    blocking_skip_tables: str = ""
     # pf tables detected automatically on the firewall (``pfctl -sTables``) whose
     # name looks like an existing block list. Merged with ``blocking_skip_tables``
     # so an IP already blocked by another plugin is never blocked twice.

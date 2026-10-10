@@ -72,7 +72,7 @@ const DEFAULT_BLOCKING: BlockingForm = {
   blocking_ttl_hours: 0,
   blocking_notify_email: true,
   blocking_token_days: 7,
-  blocking_skip_tables: "crowdsec_blacklists, crowdsec6_blacklists, crowdsec_blocklists, crowdsec6_blocklists",
+  blocking_skip_tables: "",
   blocking_skip_tables_detected: "",
   blocking_dry_run: false,
   blocking_escalate: false,
@@ -105,10 +105,7 @@ export function DetectionSettings() {
           blocking_ttl_hours: Number(data.blocking_ttl_hours ?? 0),
           blocking_notify_email: Boolean(data.blocking_notify_email ?? true),
           blocking_token_days: Number(data.blocking_token_days ?? 7),
-          blocking_skip_tables: String(
-            data.blocking_skip_tables ??
-              "crowdsec_blacklists, crowdsec6_blacklists, crowdsec_blocklists, crowdsec6_blocklists",
-          ),
+          blocking_skip_tables: String(data.blocking_skip_tables ?? ""),
           blocking_skip_tables_detected: String(data.blocking_skip_tables_detected ?? ""),
           blocking_dry_run: Boolean(data.blocking_dry_run ?? false),
           blocking_escalate: Boolean(data.blocking_escalate ?? false),
@@ -205,9 +202,11 @@ export function DetectionSettings() {
     setBlockError("");
     try {
       const result = await api.detectBlockTables();
+      const detected = String(result.settings?.blocking_skip_tables_detected ?? "");
       setBlocking((prev) => ({
         ...prev,
-        blocking_skip_tables_detected: String(result.settings?.blocking_skip_tables_detected ?? ""),
+        blocking_skip_tables: detected || prev.blocking_skip_tables,
+        blocking_skip_tables_detected: detected,
       }));
       setBlockMessage(
         result.tables.length
@@ -455,11 +454,14 @@ export function DetectionSettings() {
         </label>
         <label className="muted" style={{ fontSize: 12 }}>
           Listes déjà bloquantes (tables pf / alias, séparés par des virgules — CrowdSec, Q-Feeds…).
-          Une IP déjà présente n'est ni rebloquée ni signalée.
+          Vides par défaut : les listes présentes sur le pare-feu sont détectées automatiquement
+          (à chaque synchronisation ou via le bouton ci-dessous). Une IP déjà présente n'est ni
+          rebloquée ni signalée.
           <br />
           <input
             style={{ width: "100%" }}
-            value={blocking.blocking_skip_tables}
+            placeholder="Rempli automatiquement par la détection"
+            value={blocking.blocking_skip_tables || blocking.blocking_skip_tables_detected}
             onChange={(e) => setBlocking({ ...blocking, blocking_skip_tables: e.target.value })}
           />
         </label>
