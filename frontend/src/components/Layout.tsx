@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { useAuth } from "../auth";
 import { useInstance } from "../instance";
 
-const NAV: { group: string; links: { to: string; label: string }[] }[] = [
+const NAV: { group: string; admin?: boolean; links: { to: string; label: string }[] }[] = [
   { group: "", links: [{ to: "/", label: "Tableau de bord" }] },
   {
     group: "Journaux",
@@ -28,6 +28,7 @@ const NAV: { group: string; links: { to: string; label: string }[] }[] = [
   },
   {
     group: "Sécurité",
+    admin: true,
     links: [
       { to: "/security/alerts", label: "Alertes" },
       { to: "/security/detection", label: "Détection" },
@@ -35,6 +36,7 @@ const NAV: { group: string; links: { to: string; label: string }[] }[] = [
   },
   {
     group: "OPNsense",
+    admin: true,
     links: [
       { to: "/opnsense/status", label: "État" },
       { to: "/opnsense/interfaces", label: "Interfaces" },
@@ -43,21 +45,31 @@ const NAV: { group: string; links: { to: string; label: string }[] }[] = [
   },
   {
     group: "Paramètres",
+    admin: true,
     links: [
       { to: "/settings", label: "Application" },
       { to: "/instances", label: "Instances" },
+      { to: "/settings/users", label: "Utilisateurs" },
       { to: "/settings/notifications", label: "Notifications" },
       { to: "/settings/geoip", label: "Géolocalisation" },
       { to: "/settings/opnsense", label: "OPNsense" },
     ],
   },
-  { group: "Système", links: [{ to: "/system", label: "État" }, { to: "/system/logs", label: "Journaux" }] },
+  {
+    group: "Système",
+    admin: true,
+    links: [
+      { to: "/system", label: "État" },
+      { to: "/system/logs", label: "Journaux" },
+    ],
+  },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
-  const { username, logout } = useAuth();
+  const { username, role, isAdmin, logout } = useAuth();
   const { instances, instance, selectInstance } = useInstance();
   const navigate = useNavigate();
+  const nav = NAV.filter((section) => isAdmin || !section.admin);
   // Sections start collapsed; the user expands the ones they need.
   const [open, setOpen] = useState<Record<string, boolean>>({});
 
@@ -67,7 +79,7 @@ export function Layout({ children }: { children: ReactNode }) {
     <div className="layout">
       <aside className="sidebar">
         <h1>Analyseur de logs OPNsense</h1>
-        {NAV.map((section) => (
+        {nav.map((section) => (
           <div key={section.group || "root"}>
             {section.group ? (
               <>
@@ -128,7 +140,10 @@ export function Layout({ children }: { children: ReactNode }) {
           <div className="muted">
             {username ? (
               <>
-                <span>{username}</span>{" "}
+                <span>
+                  {username}
+                  {role ? ` (${role === "admin" ? "admin" : "lecteur"})` : ""}
+                </span>{" "}
                 <button
                   onClick={async () => {
                     await logout();

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 
 from ..opnsense import interfaces as ifaces_repo
 from ..opnsense.sync import OPNSenseSync
-from .deps import InstanceId, require_user
+from .deps import InstanceId, require_admin, require_user
 
 router = APIRouter(prefix="/api/interfaces", tags=["interfaces"])
 
@@ -19,6 +19,6 @@ def list_interfaces(
 
 @router.post("/sync")
 def sync_interfaces(
-    instance: str | None = InstanceId, user: str = Depends(require_user)
+    instance: str | None = InstanceId, user: str = Depends(require_admin)
 ) -> dict:
     return OPNSenseSync(instance_id=instance).sync()

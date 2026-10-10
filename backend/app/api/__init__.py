@@ -20,6 +20,7 @@ from . import (
     settings,
     statistics,
     system,
+    users,
     whois,
 )
 
@@ -27,6 +28,6 @@ api_router = APIRouter()
 for module in (
     health, auth, instances, logs, search, statistics, filters, rules, interfaces,
     settings, system, export, live, lookup, detection, geoip, opnsense_import,
-    blocking_public, whois,
+    blocking_public, whois, users,
 ):
     api_router.include_router(module.router)

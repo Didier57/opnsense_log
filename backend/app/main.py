@@ -322,6 +322,17 @@ async def lifespan(app: FastAPI):
             logger.info("Imported %d legacy whitelist entrie(s) into the allowlist", len(migrated))
     except Exception:  # noqa: BLE001 - never block startup on migration
         logger.exception("Legacy whitelist migration failed")
+    # Seed the first administrator account from the environment on a fresh
+    # install (only when no user exists yet), then the .env credentials are no
+    # longer needed: accounts are managed from the web UI.
+    try:
+        from .core.users import bootstrap_env_admin
+
+        created = await asyncio.to_thread(bootstrap_env_admin)
+        if created:
+            logger.info("Created initial administrator '%s' from environment", created)
+    except Exception:  # noqa: BLE001 - never block startup on user bootstrap
+        logger.exception("User bootstrap failed")
     tasks = [
         asyncio.create_task(retention_loop(), name="retention"),
         asyncio.create_task(_opnsense_sync_loop(), name="opnsense-sync"),

@@ -183,6 +183,14 @@ CREATE TABLE IF NOT EXISTS instances (
     "syslog_protocol" VARCHAR,
     "created_at"      TIMESTAMPTZ
 );
+
+CREATE TABLE IF NOT EXISTS users (
+    "username"      VARCHAR PRIMARY KEY,
+    "password_hash" VARCHAR,
+    "role"          VARCHAR,
+    "created_at"    TIMESTAMPTZ,
+    "last_login_at" TIMESTAMPTZ
+);
 """
 
 

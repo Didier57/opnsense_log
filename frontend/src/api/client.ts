@@ -15,6 +15,7 @@ import type {
   Summary,
   TimeseriesPoint,
   TopItem,
+  User,
 } from "../types";
 
 const TOKEN_KEY = "ola_token";
@@ -64,12 +65,34 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const api = {
   login: (username: string, password: string) =>
-    request<{ access_token: string; username: string }>("/api/auth/login", {
+    request<{ access_token: string; username: string; role: string }>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ username, password }),
     }),
   logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
-  me: () => request<{ username: string; auth_enabled: boolean }>("/api/auth/me"),
+  me: () =>
+    request<{ username: string; role: string; auth_enabled: boolean }>("/api/auth/me"),
+  setupStatus: () =>
+    request<{ auth_enabled: boolean; needs_setup: boolean }>("/api/auth/setup-status"),
+  setup: (username: string, password: string) =>
+    request<{ access_token: string; username: string; role: string }>("/api/auth/setup", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+
+  users: () => request<{ items: User[] }>("/api/users"),
+  createUser: (payload: Record<string, unknown>) =>
+    request<{ ok: boolean; user: User }>("/api/users", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateUser: (username: string, payload: Record<string, unknown>) =>
+    request<{ ok: boolean; user: User }>(`/api/users/${encodeURIComponent(username)}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  deleteUser: (username: string) =>
+    request<{ ok: boolean }>(`/api/users/${encodeURIComponent(username)}`, { method: "DELETE" }),
 
   instances: () => request<{ items: Instance[] }>("/api/instances"),
   createInstance: (payload: Record<string, unknown>) =>

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..opnsense import rules as rules_repo
 from ..opnsense.sync import OPNSenseSync
-from .deps import InstanceId, require_user
+from .deps import InstanceId, require_admin, require_user
 
 router = APIRouter(prefix="/api/rules", tags=["rules"])
 
@@ -19,7 +19,7 @@ def list_rules(
 
 @router.post("/sync")
 def sync_rules(
-    instance: str | None = InstanceId, user: str = Depends(require_user)
+    instance: str | None = InstanceId, user: str = Depends(require_admin)
 ) -> dict:
     return OPNSenseSync(instance_id=instance).sync()
 

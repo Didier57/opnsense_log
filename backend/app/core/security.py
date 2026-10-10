@@ -40,9 +40,14 @@ def verify_login_password(password: str) -> bool:
     return False
 
 
-def create_token(username: str) -> str:
+def create_token(username: str, role: str = "admin") -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.token_expire_minutes)
-    payload = {"sub": username, "exp": expire, "iat": datetime.now(timezone.utc)}
+    payload = {
+        "sub": username,
+        "role": role or "admin",
+        "exp": expire,
+        "iat": datetime.now(timezone.utc),
+    }
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 

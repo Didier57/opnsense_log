@@ -170,3 +170,10 @@ export interface Instance {
   syslog_protocol: string | null;
   created_at: string | null;
 }
+
+export interface User {
+  username: string;
+  role: string;
+  created_at: string | null;
+  last_login_at: string | null;
+}

@@ -14,7 +14,7 @@ from ..opnsense.ssh import OPNsenseSSH
 from ..storage.database import get_database
 from ..syslog.server import get_syslog_server
 from ..websocket.live import get_live_hub
-from .deps import InstanceId, require_user
+from .deps import InstanceId, require_admin
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 
@@ -22,7 +22,7 @@ logger = logging.getLogger("api.system")
 
 
 @router.get("/status")
-def status(instance: str | None = InstanceId, user: str = Depends(require_user)) -> dict:
+def status(instance: str | None = InstanceId, user: str = Depends(require_admin)) -> dict:
     db_ok = True
     try:
         get_database(resolve_instance_id(instance)).execute_read("SELECT 1").fetchone()
@@ -60,6 +60,6 @@ def status(instance: str | None = InstanceId, user: str = Depends(require_user))
 
 
 @router.get("/logs")
-def logs(limit: int = 200, user: str = Depends(require_user)) -> dict:
+def logs(limit: int = 200, user: str = Depends(require_admin)) -> dict:
     items = list(reversed(ring_handler.records[-limit:]))
     return {"items": items}

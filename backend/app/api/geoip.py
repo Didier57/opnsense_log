@@ -7,7 +7,7 @@ from ..geoip import (
     get_geo_settings,
     update_geo_settings,
 )
-from .deps import InstanceId, require_user
+from .deps import InstanceId, require_admin, require_user
 from .schemas import GeoIpSettings
 
 router = APIRouter(prefix="/api", tags=["geoip"])
@@ -26,22 +26,22 @@ def lookup_countries(
 
 
 @router.get("/settings/geoip")
-def read_geoip_settings(user: str = Depends(require_user)) -> dict:
+def read_geoip_settings(user: str = Depends(require_admin)) -> dict:
     return get_geo_settings(mask_key=True)
 
 
 @router.put("/settings/geoip")
 def write_geoip_settings(
-    payload: GeoIpSettings, user: str = Depends(require_user)
+    payload: GeoIpSettings, user: str = Depends(require_admin)
 ) -> dict:
     return update_geo_settings(payload.model_dump(exclude_none=True))
 
 
 @router.get("/settings/geoip/status")
-def geoip_status(user: str = Depends(require_user)) -> dict:
+def geoip_status(user: str = Depends(require_admin)) -> dict:
     return geo_resolver.status()
 
 
 @router.post("/settings/geoip/update")
-def geoip_update(user: str = Depends(require_user)) -> dict:
+def geoip_update(user: str = Depends(require_admin)) -> dict:
     return download_database()

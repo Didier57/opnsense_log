@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 
 from ..opnsense.filterlog_import import get_import_job, start_import
 from ..opnsense.settings_store import get_opnsense_settings
-from .deps import require_user
+from .deps import require_admin
 
 router = APIRouter(prefix="/api/opnsense/filterlog", tags=["opnsense"])
 
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/opnsense/filterlog", tags=["opnsense"])
 def start_import_endpoint(
     full: bool = False,
     instance_id: str | None = None,
-    user: str = Depends(require_user),
+    user: str = Depends(require_admin),
 ) -> dict:
     max_days = 0
     if not full:
@@ -32,5 +32,5 @@ def start_import_endpoint(
 
 
 @router.get("/import/status")
-def import_status(instance_id: str | None = None, user: str = Depends(require_user)) -> dict:
+def import_status(instance_id: str | None = None, user: str = Depends(require_admin)) -> dict:
     return get_import_job(instance_id).snapshot()

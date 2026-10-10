@@ -10,7 +10,7 @@ from ..instances import (
     list_instances,
     update_instance,
 )
-from .deps import require_user
+from .deps import require_admin, require_user
 from .schemas import InstanceCreate, InstanceUpdate
 
 router = APIRouter(prefix="/api/instances", tags=["instances"])
@@ -23,7 +23,7 @@ def list_instances_endpoint(user: str = Depends(require_user)) -> dict:
 
 @router.post("")
 def create_instance_endpoint(
-    payload: InstanceCreate, user: str = Depends(require_user)
+    payload: InstanceCreate, user: str = Depends(require_admin)
 ) -> dict:
     created = create_instance(name=payload.name, syslog_port=payload.syslog_port)
     if payload.syslog_protocol:
@@ -41,7 +41,7 @@ def get_instance_endpoint(instance_id: str, user: str = Depends(require_user)) -
 
 @router.put("/{instance_id}")
 def update_instance_endpoint(
-    instance_id: str, payload: InstanceUpdate, user: str = Depends(require_user)
+    instance_id: str, payload: InstanceUpdate, user: str = Depends(require_admin)
 ) -> dict:
     updated = update_instance(
         instance_id,
@@ -56,5 +56,5 @@ def update_instance_endpoint(
 
 
 @router.delete("/{instance_id}")
-def delete_instance_endpoint(instance_id: str, user: str = Depends(require_user)) -> dict:
+def delete_instance_endpoint(instance_id: str, user: str = Depends(require_admin)) -> dict:
     return {"ok": delete_instance(instance_id)}

@@ -146,3 +146,14 @@ class Instance(BaseModel):
     syslog_port: int | None = None
     syslog_protocol: str | None = None
     created_at: str | None = None
+
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    role: str = "viewer"
+
+
+class UserUpdate(BaseModel):
+    role: str | None = None
+    password: str | None = None
