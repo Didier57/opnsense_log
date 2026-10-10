@@ -22,7 +22,8 @@ configuration OPNsense via SSH.
   `filterlog` brut. Gère IPv4/IPv6, TCP/UDP, ICMP/ICMPv6 et les lignes malformées.
 - **Vue Temps réel** via WebSocket avec démarrer/pause/reprendre/vider, taille de tampon
   configurable et filtres rapides. Mettre en pause la vue **n'arrête jamais** la réception
-  côté serveur.
+  côté serveur. Le flux résiste aux rafales (événements regroupés) et se **reconnecte
+  automatiquement** (heartbeat côté serveur + surveillance côté client).
 - **Recherche historique** exécutée côté serveur (DuckDB) — des millions de lignes ne sont
   jamais chargées dans le navigateur. Plage date/heure, filtres rapides et filtres avancés
   (ET/OU, opérateurs, regex).
@@ -40,13 +41,24 @@ configuration OPNsense via SSH.
 - **Surveillance et journalisation interne** avec une page Système → État
   (reçus / analysés / invalides / événements par seconde) et une page Système → Journaux.
 - **Détection de sécurité et alertes** : un moteur en arrière-plan (indépendant de
-  l'interface) détectant les scans de ports, les attaques par force brute et (en option) les
-  pics de trafic. Les alertes sont listées dans **Sécurité → Alertes** et peuvent être
-  envoyées par e-mail (SMTP). Les réglages se font depuis l'interface web
-  (Sécurité → Détection, Paramètres → Notifications).
-- **Blocage automatique** : ajout des IP publiques des alertes (force brute / scan de ports)
-  dans un **alias pare-feu OPNsense de type « Host(s) »** via l'API REST, en mode manuel ou
-  automatique, avec liste blanche et expiration (TTL).
+  l'interface) détectant les scans de ports, la force brute (globale et **par port de
+  service**), le **balayage réseau** (une même source vers de nombreux hôtes) et (en option)
+  les pics de trafic. Les **ports des services de messagerie** sont ignorés par défaut
+  (réglable) pour éviter les faux positifs. Les alertes sont listées dans **Sécurité →
+  Alertes** (avec **recherche** sur toutes les colonnes et le **label de la règle** qui a
+  bloqué la source) et peuvent être envoyées par e-mail (SMTP) — la notification est ignorée
+  si la source est déjà bloquée par l'application ou gérée par un autre plugin. Réglages
+  depuis l'interface web (Sécurité → Détection, Paramètres → Notifications).
+- **Blocage automatique** : ajout des IP publiques des alertes (force brute / scan de ports /
+  balayage réseau) dans un **alias pare-feu OPNsense de type « Host(s) »** via l'API REST, en
+  mode manuel ou automatique. **Mode simulation (dry-run)**, **liste blanche** gérée depuis
+  l'interface, **anti-doublon** (détection automatique des listes de blocage déjà présentes —
+  CrowdSec, Q-Feeds… — pour ne jamais re-bloquer), **réconciliation de l'alias** au démarrage,
+  et **durée qui double à chaque récidive**, renouvelée juste avant expiration tant que l'IP
+  insiste (e-mail uniquement au premier blocage).
+- **Bascule HA OPNsense** : pour un cluster Haute Disponibilité, une instance peut **hériter de
+  la clé API du nœud maître** (la synchronisation HA répliquant les clés, une clé gérée
+  localement serait écrasée).
 - **Géolocalisation (pays)** : pays d'origine des IP publiques (base gratuite DB-IP Lite, ou
   MaxMind GeoLite2 si une clé est fournie), avec drapeaux et statistiques par pays.
 - **Recherche de noms d'hôtes** : DNS inverse plus les noms locaux issus des baux DHCP du
@@ -71,18 +83,20 @@ OPNsense ── syslog ──▶ Récepteur syslog ──▶ File de réception 
 ```
 backend/
   app/
-    api/         routeurs FastAPI (health, auth, logs, search, statistics, filters,
-                 rules, interfaces, settings, system, export, live)
+    api/         routeurs FastAPI (health, auth, instances, logs, search, statistics,
+                 filters, rules, interfaces, settings, system, export, live, lookup,
+                 detection, geoip, opnsense_import, blocking_public)
     parser/      analyseurs filterlog / RFC3164 / RFC5424 / personnalisé
     storage/     base DuckDB, dépôt, rétention
     syslog/      serveur syslog UDP/TCP avec file + workers par lots
     opnsense/    client SSH, chargeur config.xml, baux DHCP, synchronisation, stockage des réglages
-    detection/   détecteurs scan de ports / force brute / pics, stockage des alertes
+    detection/   détecteurs scan de ports / force brute (globale et par service) /
+                 balayage réseau / pics, liste blanche, stockage des alertes
     notifications/ notifications e-mail SMTP
     websocket/   concentrateur Temps réel
     core/        journalisation, compteurs, sécurité
     main.py      application FastAPI + cycle de vie
-  tests/         tests analyseur / recherche / ssh
+  tests/         tests analyseur / recherche / ssh / détection / blocage / multi-instance
   scripts/       hash_password.py
 frontend/
   src/           interface React + Vite + TypeScript
@@ -213,9 +227,14 @@ dépôt (ET/OU/regex/plage de temps/IP/port/règle/interface) et le client SSH
 
 Déjà implémenté au-delà de la V1 :
 
-- **Moteur de détection** — scans de ports, force brute et (en option) pics de trafic, avec
-  une liste d'alertes et des notifications e-mail (SMTP).
-- **Blocage automatique** — alimentation d'un alias pare-feu OPNsense via l'API REST.
+- **Moteur de détection** — scans de ports, force brute (globale et par port de service),
+  balayage réseau et (en option) pics de trafic, avec liste d'alertes, recherche et
+  notifications e-mail (SMTP).
+- **Blocage automatique** — alias pare-feu OPNsense via l'API REST : modes manuel/auto/
+  simulation (dry-run), liste blanche, anti-doublon (listes existantes détectées), 
+  réconciliation d'alias et durée croissante à chaque récidive.
+- **Bascule HA OPNsense** — héritage de la clé API du nœud maître pour un cluster Haute
+  Disponibilité.
 - **Géolocalisation (pays)** — pays des IP publiques avec drapeaux et statistiques.
 - **Recherche de noms d'hôtes** — DNS inverse et noms des baux DHCP/Dnsmasq.
 - **Import des journaux OPNsense** — rattrapage des événements manquants par SSH.
