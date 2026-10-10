@@ -162,6 +162,12 @@ CREATE TABLE IF NOT EXISTS blocked_ips (
     "hits"       INTEGER
 );
 
+CREATE TABLE IF NOT EXISTS block_counts (
+    "ip"              VARCHAR PRIMARY KEY,
+    "hits"            INTEGER,
+    "last_blocked_at" TIMESTAMPTZ
+);
+
 CREATE TABLE IF NOT EXISTS allowlist_ips (
     "ip"         VARCHAR PRIMARY KEY,
     "note"       VARCHAR,

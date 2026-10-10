@@ -198,6 +198,11 @@ def _already_blocked(ips: list[str], tables: list[str], instance_id: str | None 
     return found & set(ips)
 
 
+# Absolute upper bound for an escalated duration (hours). Purely a safety net to
+# avoid timedelta overflow when a persistent offender keeps coming back.
+_HARD_MAX_HOURS = 24 * 365 * 100  # ~100 years
+
+
 def _record_blocked(
     ips: list[str],
     rule: str,
@@ -213,14 +218,30 @@ def _record_blocked(
     now = datetime.now(timezone.utc)
     records: dict[str, dict] = {}
     for ip in ips:
-        row = db.execute_read('SELECT "hits" FROM blocked_ips WHERE "ip" = ?', [ip]).fetchone()
-        hits = (int(row[0]) if row and row[0] is not None else 0) + 1
+        # The offence counter lives in ``block_counts`` so it survives the
+        # expiry of a block (``prune_expired`` only deletes the ``blocked_ips``
+        # row). Fall back to the legacy ``blocked_ips.hits`` for pre-existing
+        # databases so escalation keeps accumulating after the upgrade.
+        row = db.execute_read('SELECT "hits" FROM block_counts WHERE "ip" = ?', [ip]).fetchone()
+        if row and row[0] is not None:
+            hits = int(row[0]) + 1
+        else:
+            legacy = db.execute_read('SELECT "hits" FROM blocked_ips WHERE "ip" = ?', [ip]).fetchone()
+            hits = (int(legacy[0]) if legacy and legacy[0] is not None else 0) + 1
         expires = None
         if ttl_hours and ttl_hours > 0:
-            hours = ttl_hours * hits if escalate else ttl_hours
+            # Escalation doubles the duration on every repeat offence:
+            # ttl, ttl*2, ttl*4, ttl*8 ... (hits 1, 2, 3, 4 ...).
+            hours = ttl_hours * (2 ** (hits - 1)) if escalate else ttl_hours
             if max_hours and max_hours > 0:
                 hours = min(hours, max_hours)
+            hours = min(hours, _HARD_MAX_HOURS)
             expires = now + timedelta(hours=hours)
+        db.execute_write(
+            'INSERT INTO block_counts ("ip", "hits", "last_blocked_at") VALUES (?, ?, now()) '
+            'ON CONFLICT ("ip") DO UPDATE SET "hits" = excluded."hits", "last_blocked_at" = now()',
+            [ip, hits],
+        )
         db.execute_write(
             'INSERT INTO blocked_ips ("ip", "rule", "source", "added_at", "expires_at", "hits") '
             "VALUES (?, ?, ?, now(), ?, ?) ON CONFLICT (\"ip\") DO UPDATE SET "
@@ -303,14 +324,18 @@ def apply_ips(ips: list[str], rule: str = "", source: str = "manual", reasons: d
         max_hours=int(cfg.get("blocking_ttl_max_hours", 0) or 0),
         instance_id=instance_id,
     )
-    if added and cfg.get("blocking_notify_email", True):
+    # Only notify on the first block of an IP: a repeat offender (escalated TTL)
+    # is blocked silently so a recurrence does not spam the mailbox again.
+    first_time = [ip for ip in added if records.get(ip, {}).get("hits", 1) <= 1]
+    if first_time and cfg.get("blocking_notify_email", True):
         try:
+            filtered_reasons = {k: v for k, v in (reasons or {}).items() if k in first_time} or None
             send_block_notification(
-                added,
+                first_time,
                 rule=rule,
-                reasons=reasons,
+                reasons=filtered_reasons,
                 days=int(cfg.get("blocking_token_days", 7) or 7),
-                details=records,
+                details={ip: records[ip] for ip in first_time},
                 instance_id=instance_id,
             )
         except Exception:  # noqa: BLE001 - never fail a block because of e-mail
@@ -388,7 +413,10 @@ def unblock_ips(ips: list[str], instance_id: str | None = None) -> dict:
             except APIError as exc:
                 return {"ok": False, "error": str(exc)}
     marks = ", ".join("?" for _ in targets)
-    get_database(resolve_instance_id(instance_id)).execute_write(f'DELETE FROM blocked_ips WHERE "ip" IN ({marks})', targets)
+    db = get_database(resolve_instance_id(instance_id))
+    db.execute_write(f'DELETE FROM blocked_ips WHERE "ip" IN ({marks})', targets)
+    # A manual unblock resets the escalation counter for these IPs.
+    db.execute_write(f'DELETE FROM block_counts WHERE "ip" IN ({marks})', targets)
     return {"ok": True, "removed": targets}
 
 

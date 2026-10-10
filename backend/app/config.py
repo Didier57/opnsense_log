@@ -85,10 +85,13 @@ class Settings(BaseSettings):
     blocking_skip_tables_detected: str = ""
     # Simulation mode: compute what would be blocked but never touch the alias.
     blocking_dry_run: bool = False
-    # Increase the block duration on repeat offences (TTL * number of offences).
+    # Increase the block duration on repeat offences: the TTL doubles on every
+    # recurrence (ttl, ttl*2, ttl*4, ...) and keeps growing indefinitely unless a
+    # cap is set (see ``blocking_ttl_max_hours``). The offence counter is kept
+    # even after a block expires, and reset by a manual unblock.
     blocking_escalate: bool = False
-    # Upper bound (hours) for escalated durations (0 = no cap).
-    blocking_ttl_max_hours: int = 720
+    # Upper bound (hours) for escalated durations (0 = no cap, i.e. unlimited).
+    blocking_ttl_max_hours: int = 0
 
     # --- Auth ---
     auth_enabled: bool = True

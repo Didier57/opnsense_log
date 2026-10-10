@@ -78,7 +78,7 @@ const DEFAULT_BLOCKING: BlockingForm = {
   blocking_skip_tables_detected: "",
   blocking_dry_run: false,
   blocking_escalate: false,
-  blocking_ttl_max_hours: 720,
+  blocking_ttl_max_hours: 0,
 };
 
 export function DetectionSettings() {
@@ -111,7 +111,7 @@ export function DetectionSettings() {
           blocking_skip_tables_detected: String(data.blocking_skip_tables_detected ?? ""),
           blocking_dry_run: Boolean(data.blocking_dry_run ?? false),
           blocking_escalate: Boolean(data.blocking_escalate ?? false),
-          blocking_ttl_max_hours: Number(data.blocking_ttl_max_hours ?? 720),
+          blocking_ttl_max_hours: Number(data.blocking_ttl_max_hours ?? 0),
         }),
       )
       .catch(() => undefined);
@@ -504,7 +504,7 @@ export function DetectionSettings() {
               checked={blocking.blocking_escalate}
               onChange={(e) => setBlocking({ ...blocking, blocking_escalate: e.target.checked })}
             />
-            Durée croissante en cas de récidive (durée × nombre de blocages)
+            Durée qui double à chaque récidive (1h → 2h → 4h → 8h…), e-mail uniquement au 1ᵉʳ blocage
           </label>
           <label className="muted" style={{ fontSize: 12 }}>
             Durée maximale escaladée (heures, 0 = illimité)

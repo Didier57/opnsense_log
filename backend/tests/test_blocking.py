@@ -167,13 +167,67 @@ def test_record_blocked_returns_details(database):
 
 
 def test_record_blocked_escalates_ttl(database):
-    blocker._record_blocked(["1.2.3.4"], "detection", "auto", 1, escalate=True, max_hours=10)
-    blocker._record_blocked(["1.2.3.4"], "detection", "auto", 1, escalate=True, max_hours=10)
+    blocker._record_blocked(["1.2.3.4"], "detection", "auto", 1, escalate=True, max_hours=0)
+    blocker._record_blocked(["1.2.3.4"], "detection", "auto", 1, escalate=True, max_hours=0)
+    blocker._record_blocked(["1.2.3.4"], "detection", "auto", 1, escalate=True, max_hours=0)
     hits, expires = database.execute_read(
         'SELECT "hits", "expires_at" FROM blocked_ips WHERE "ip" = ?', ["1.2.3.4"]
     ).fetchone()
+    assert hits == 3
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    # TTL 1h doubling on recurrence: 1h, 2h, 4h.
+    delta = expires - datetime.now(timezone.utc)
+    assert 3.5 <= delta.total_seconds() / 3600 <= 4.5
+
+
+def test_escalation_survives_prune(database, monkeypatch):
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg(blocking_ttl_hours=1))
+    fake = FakeAPI({"BLOCK": {"uuid": "u1", "name": "BLOCK", "type": "host", "enabled": "1", "content": ["1.2.3.4"]}})
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
+    database.execute_write(
+        'INSERT INTO block_counts ("ip", "hits", "last_blocked_at") VALUES (?, ?, now())',
+        ["1.2.3.4", 1],
+    )
+    database.execute_write(
+        'INSERT INTO blocked_ips ("ip", "rule", "source", "added_at", "expires_at", "hits") '
+        "VALUES ('1.2.3.4', 'detection', 'auto', now(), now() - INTERVAL 1 HOUR, 1)"
+    )
+    assert blocker.prune_expired() == 1
+    assert database.execute_read(
+        'SELECT COUNT(*) FROM blocked_ips WHERE "ip" = ?', ["1.2.3.4"]
+    ).fetchone()[0] == 0
+    # The offence counter survived the expiry, so this recurrence is the 2nd.
+    blocker._record_blocked(["1.2.3.4"], "detection", "auto", 1, escalate=True)
+    hits = database.execute_read(
+        'SELECT "hits" FROM blocked_ips WHERE "ip" = ?', ["1.2.3.4"]
+    ).fetchone()[0]
     assert hits == 2
-    assert expires is not None
+
+
+def test_apply_ips_no_notification_on_recurrence(database, monkeypatch):
+    monkeypatch.setattr(
+        blocker,
+        "get_blocking_settings",
+        lambda *a, **k: _cfg(blocking_notify_email=True, blocking_ttl_hours=1, blocking_escalate=True),
+    )
+    fake = FakeAPI()
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
+    database.execute_write(
+        'INSERT INTO block_counts ("ip", "hits", "last_blocked_at") VALUES (?, ?, now())',
+        ["1.2.3.4", 1],
+    )
+    called = {"count": 0}
+    monkeypatch.setattr(
+        blocker,
+        "send_block_notification",
+        lambda *a, **k: called.update(count=called["count"] + 1) or {"ok": True},
+    )
+
+    result = blocker.apply_ips(["1.2.3.4"], rule="detection", source="auto")
+
+    assert result["added"] == ["1.2.3.4"]
+    assert called["count"] == 0
 
 
 def test_record_blocked_escalation_capped(database):
