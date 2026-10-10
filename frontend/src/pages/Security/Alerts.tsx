@@ -38,6 +38,7 @@ export function Alerts() {
   const navigate = useNavigate();
   const [items, setItems] = useState<Alert[]>([]);
   const [total, setTotal] = useState(0);
+  const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -95,6 +96,24 @@ export function Alerts() {
     }
   };
 
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? items.filter((alert) =>
+        [
+          formatDateTime(alert.event_time || alert.created_at),
+          alert.severity,
+          alert.rule,
+          alert.src_ip,
+          String(alert.details?.rule_label ?? ""),
+          alert.title,
+          alert.message,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(q),
+      )
+    : items;
+
   return (
     <>
       <div className="topbar">
@@ -102,6 +121,12 @@ export function Alerts() {
           Alertes de sécurité <span className="muted" style={{ fontSize: 13 }}>{total}</span>
         </h2>
         <div className="filters">
+          <input
+            type="search"
+            placeholder="Rechercher…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
           <button className="active" onClick={runNow} disabled={busy}>
             {busy ? "Analyse…" : "Analyser maintenant"}
           </button>
@@ -114,8 +139,8 @@ export function Alerts() {
       {error && <p className="error">{error}</p>}
 
       <div className="panel">
-        {items.length === 0 ? (
-          <p className="muted">Aucune alerte.</p>
+        {filtered.length === 0 ? (
+          <p className="muted">{items.length === 0 ? "Aucune alerte." : "Aucun résultat."}</p>
         ) : (
           <div className="table-scroll">
             <table className="log-table">
@@ -130,7 +155,7 @@ export function Alerts() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((alert) => (
+                {filtered.map((alert) => (
                   <tr
                     key={alert.id}
                     style={{ cursor: "pointer" }}

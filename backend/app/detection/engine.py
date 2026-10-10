@@ -127,6 +127,32 @@ def _fmt_time(value: datetime | None) -> str:
     return value.astimezone(tz).strftime("%d/%m/%Y %H:%M:%S")
 
 
+def _ignore_ports(cfg: dict) -> list[int]:
+    """Destination ports excluded from the brute-force detectors.
+
+    Legitimate mail clients retry the same IMAP/SMTP port many times, which
+    would otherwise look like a service brute-force. Configured in the UI.
+    """
+    ports: list[int] = []
+    for token in str(cfg.get("detection_bruteforce_ignore_ports") or "").replace(";", ",").split(","):
+        token = token.strip()
+        if token.isdigit():
+            port = int(token)
+            if 0 < port <= 65535 and port not in ports:
+                ports.append(port)
+    return ports
+
+
+def _port_filter(cfg: dict, params: list) -> str:
+    """SQL fragment excluding the ignore ports; appends their values to ``params``."""
+    ports = _ignore_ports(cfg)
+    if not ports:
+        return ""
+    params.extend(ports)
+    placeholders = ", ".join("?" for _ in ports)
+    return f' AND ("dst_port" IS NULL OR "dst_port" NOT IN ({placeholders}))'
+
+
 def _detect_port_scan(cfg: dict, floor: datetime | None = None, allow_nets: list | None = None) -> list[dict]:
     window = cfg["detection_portscan_window_sec"]
     cutoff = _window_start(window, floor)
@@ -171,18 +197,21 @@ def _detect_port_scan(cfg: dict, floor: datetime | None = None, allow_nets: list
 def _detect_bruteforce(cfg: dict, floor: datetime | None = None, allow_nets: list | None = None) -> list[dict]:
     window = cfg["detection_bruteforce_window_sec"]
     cutoff = _window_start(window, floor)
+    params: list = [cutoff]
+    port_filter = _port_filter(cfg, params)
+    params += [cfg["detection_bruteforce_count"], _MAX_PER_RULE]
     rows = _rows(
-        """
+        f"""
         SELECT "src_ip", COUNT(*) AS attempts, MAX("event_time") AS last_seen
         FROM events
         WHERE "event_time" >= ? AND "src_ip" <> ''
-              AND lower("action") IN ('block', 'reject')
+              AND lower("action") IN ('block', 'reject'){port_filter}
         GROUP BY 1
         HAVING COUNT(*) >= ?
         ORDER BY attempts DESC
         LIMIT ?
         """,
-        [cutoff, cfg["detection_bruteforce_count"], _MAX_PER_RULE],
+        params,
     )
     bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
     labels = _block_labels([r[0] for r in rows], cutoff)
@@ -214,18 +243,21 @@ def _detect_bruteforce_service(cfg: dict, floor: datetime | None = None, allow_n
     """Repeated blocks against the same destination port (service brute-force)."""
     window = cfg["detection_bruteforce_window_sec"]
     cutoff = _window_start(window, floor)
+    params: list = [cutoff]
+    port_filter = _port_filter(cfg, params)
+    params += [cfg["detection_bruteforce_service_count"], _MAX_PER_RULE]
     rows = _rows(
-        """
+        f"""
         SELECT "src_ip", "dst_port", COUNT(*) AS attempts, MAX("event_time") AS last_seen
         FROM events
         WHERE "event_time" >= ? AND "src_ip" <> '' AND "dst_port" IS NOT NULL
-              AND lower("action") IN ('block', 'reject')
+              AND lower("action") IN ('block', 'reject'){port_filter}
         GROUP BY 1, 2
         HAVING COUNT(*) >= ?
         ORDER BY attempts DESC
         LIMIT ?
         """,
-        [cutoff, cfg["detection_bruteforce_service_count"], _MAX_PER_RULE],
+        params,
     )
     bucket = int(datetime.now(timezone.utc).timestamp() // max(window, 1))
     labels = _block_labels([r[0] for r in rows], cutoff)

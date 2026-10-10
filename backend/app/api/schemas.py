@@ -68,6 +68,7 @@ class DetectionSettings(BaseModel):
     detection_bruteforce_count: int | None = Field(default=None, ge=2)
     detection_bruteforce_window_sec: int | None = Field(default=None, ge=5)
     detection_bruteforce_service_count: int | None = Field(default=None, ge=2)
+    detection_bruteforce_ignore_ports: str | None = None
     detection_horizontalscan_hosts: int | None = Field(default=None, ge=2)
     detection_horizontalscan_window_sec: int | None = Field(default=None, ge=5)
     detection_spike_enabled: bool | None = None

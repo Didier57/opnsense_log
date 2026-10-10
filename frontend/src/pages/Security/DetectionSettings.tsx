@@ -13,6 +13,7 @@ interface DetectionForm {
   detection_bruteforce_count: number;
   detection_bruteforce_window_sec: number;
   detection_bruteforce_service_count: number;
+  detection_bruteforce_ignore_ports: string;
   detection_horizontalscan_hosts: number;
   detection_horizontalscan_window_sec: number;
   detection_spike_threshold: number;
@@ -30,6 +31,7 @@ const DEFAULT_FORM: DetectionForm = {
   detection_bruteforce_count: 20,
   detection_bruteforce_window_sec: 120,
   detection_bruteforce_service_count: 5,
+  detection_bruteforce_ignore_ports: "993,995,143,110,587,465",
   detection_horizontalscan_hosts: 15,
   detection_horizontalscan_window_sec: 60,
   detection_spike_threshold: 300,
@@ -140,6 +142,7 @@ export function DetectionSettings() {
           detection_bruteforce_count: Number(data.detection_bruteforce_count ?? 20),
           detection_bruteforce_window_sec: Number(data.detection_bruteforce_window_sec ?? 120),
           detection_bruteforce_service_count: Number(data.detection_bruteforce_service_count ?? 5),
+          detection_bruteforce_ignore_ports: String(data.detection_bruteforce_ignore_ports ?? ""),
           detection_horizontalscan_hosts: Number(data.detection_horizontalscan_hosts ?? 15),
           detection_horizontalscan_window_sec: Number(
             data.detection_horizontalscan_window_sec ?? 60,
@@ -376,6 +379,19 @@ export function DetectionSettings() {
             </label>
           ))}
         </div>
+        <label className="muted" style={{ fontSize: 12 }}>
+          Ports ignorés par la force brute (séparés par des virgules — ex. ports mail 993, 143, 587…).
+          Un client légitime qui réessaie souvent ne déclenche plus d'alerte. Vide = aucun port ignoré.
+          <br />
+          <input
+            style={{ width: "100%" }}
+            placeholder="993, 143, 587…"
+            value={form.detection_bruteforce_ignore_ports}
+            onChange={(e) =>
+              setForm({ ...form, detection_bruteforce_ignore_ports: e.target.value })
+            }
+          />
+        </label>
       </div>
 
       <div className="panel">

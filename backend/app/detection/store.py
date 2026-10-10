@@ -22,7 +22,8 @@ _INT_KEYS = [
     "detection_notify_cooldown_min",
 ]
 _BOOL_KEYS = ["detection_enabled", "detection_ignore_private", "detection_spike_enabled"]
-_KEYS = _BOOL_KEYS + _INT_KEYS
+_STR_KEYS = ["detection_bruteforce_ignore_ports"]
+_KEYS = _BOOL_KEYS + _INT_KEYS + _STR_KEYS
 
 # (key, minimum) so a user cannot disable detection by entering an absurd value.
 _MINIMUMS = {
@@ -73,6 +74,8 @@ def get_detection_settings() -> dict:
     for key in _INT_KEYS:
         default = int(getattr(settings, key))
         result[key] = _as_int(value(key), default, _MINIMUMS[key])
+    for key in _STR_KEYS:
+        result[key] = str(value(key) or "")
     return result
 
 

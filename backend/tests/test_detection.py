@@ -95,6 +95,18 @@ def test_bruteforce_service_alert(db):
     assert any(a["rule"] == "bruteforce_service" for a in alerts)
 
 
+def test_bruteforce_ignores_configured_ports(db):
+    _raise_thresholds(
+        detection_portscan_ports=100000,
+        detection_bruteforce_count=3,
+        detection_bruteforce_service_count=3,
+    )
+    # Mail port retried by a legitimate client must never raise a brute-force alert.
+    EventRepository(db).insert_events([_event(action="block", dst_port=993) for _ in range(5)])
+    alerts = deng.run_cycle()
+    assert not any(a["rule"] in {"bruteforce", "bruteforce_service"} for a in alerts)
+
+
 def test_allowlisted_source_is_ignored(db):
     _raise_thresholds(detection_bruteforce_count=3)
     alstore.add_allowlist(["1.2.3.4"])

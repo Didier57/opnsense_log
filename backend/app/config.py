@@ -118,6 +118,10 @@ class Settings(BaseSettings):
     detection_portscan_window_sec: int = 60
     detection_bruteforce_count: int = 20
     detection_bruteforce_window_sec: int = 120
+    # Ports never counted by the brute-force detectors (typical mail retrieval /
+    # submission ports a legitimate client retries often). Comma separated;
+    # empty = count every port.
+    detection_bruteforce_ignore_ports: str = "993,995,143,110,587,465"
     # Repeated blocks against the SAME destination port (service brute-force).
     detection_bruteforce_service_count: int = 5
     # Same source hitting many distinct destination hosts in the window
