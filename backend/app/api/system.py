@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 
 from fastapi import APIRouter, Depends
 
@@ -20,6 +21,9 @@ from .deps import InstanceId, require_user
 router = APIRouter(prefix="/api/system", tags=["system"])
 
 logger = logging.getLogger("api.system")
+
+_compacting: set[str] = set()
+_compact_lock = threading.Lock()
 
 
 @router.get("/status")
@@ -75,12 +79,25 @@ def optimize(instance: str | None = InstanceId, user: str = Depends(require_user
     """
     iid = resolve_instance_id(instance)
 
+    with _compact_lock:
+        if iid in _compacting:
+            return {"ok": True, "started": False}
+        _compacting.add(iid)
+
     def _run() -> None:
+        logger.info("Database compaction started (instance=%s)", iid)
+        started = time.monotonic()
         try:
-            get_database(iid).compact_events()
-            logger.info("Database compaction done (instance=%s)", iid)
+            rows = get_database(iid).compact_events()
+            logger.info(
+                "Database compaction done (instance=%s, %d rows, %.1fs)",
+                iid, rows, time.monotonic() - started,
+            )
         except Exception:  # noqa: BLE001
             logger.exception("Database compaction failed (instance=%s)", iid)
+        finally:
+            with _compact_lock:
+                _compacting.discard(iid)
 
     threading.Thread(target=_run, name=f"db-compact-{iid}", daemon=True).start()
     return {"ok": True, "started": True}
