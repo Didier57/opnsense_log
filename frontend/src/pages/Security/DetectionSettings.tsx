@@ -74,7 +74,7 @@ const DEFAULT_BLOCKING: BlockingForm = {
   blocking_ttl_hours: 0,
   blocking_notify_email: true,
   blocking_token_days: 7,
-  blocking_skip_tables: "crowdsec_blacklists, crowdsec6_blacklists",
+  blocking_skip_tables: "crowdsec_blacklists, crowdsec6_blacklists, crowdsec_blocklists, crowdsec6_blocklists",
   blocking_skip_tables_detected: "",
   blocking_dry_run: false,
   blocking_escalate: false,
@@ -107,7 +107,8 @@ export function DetectionSettings() {
           blocking_notify_email: Boolean(data.blocking_notify_email ?? true),
           blocking_token_days: Number(data.blocking_token_days ?? 7),
           blocking_skip_tables: String(
-            data.blocking_skip_tables ?? "crowdsec_blacklists, crowdsec6_blacklists",
+            data.blocking_skip_tables ??
+              "crowdsec_blacklists, crowdsec6_blacklists, crowdsec_blocklists, crowdsec6_blocklists",
           ),
           blocking_skip_tables_detected: String(data.blocking_skip_tables_detected ?? ""),
           blocking_dry_run: Boolean(data.blocking_dry_run ?? false),

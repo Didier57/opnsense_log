@@ -104,6 +104,10 @@ def test_skip_tables_parsing():
     assert blocker._skip_tables(
         {"blocking_skip_tables": "a, b", "blocking_skip_tables_detected": "c b"}
     ) == ["a", "b", "c"]
+    # The app's own blocking alias is never treated as a foreign block list.
+    assert blocker._skip_tables(
+        {"blocking_skip_tables": "BLOCK_IP crowdsec_blacklists", "blocking_alias": "BLOCK_IP"}
+    ) == ["crowdsec_blacklists"]
 
 
 def test_detect_block_tables_filters_names(monkeypatch):
@@ -122,10 +126,11 @@ def test_detect_block_tables_filters_names(monkeypatch):
                                      "opnsense_username": "root", "opnsense_auth_type": "password",
                                      "opnsense_key_path": ""},
     )
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda: _cfg(blocking_alias="BLOCK_IP"))
     tables = blocker.detect_block_tables()
     assert "crowdsec_blacklists" in tables
     assert "qfeeds4" in tables
-    assert "BLOCK_IP" in tables
+    assert "BLOCK_IP" not in tables
     assert "lo0" not in tables
     assert "randomtable" not in tables
 

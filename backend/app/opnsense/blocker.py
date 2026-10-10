@@ -93,10 +93,16 @@ def _skip_tables(cfg: dict) -> list[str]:
     firewall (``blocking_skip_tables_detected``).
     """
     raw = f"{cfg.get('blocking_skip_tables') or ''} {cfg.get('blocking_skip_tables_detected') or ''}"
+    alias = str(cfg.get("blocking_alias") or "").strip().lower()
     tables: list[str] = []
     for token in re.split(r"[,\s]+", raw):
         token = token.strip()
-        if token and re.fullmatch(r"[A-Za-z0-9_.\-]+", token) and token not in tables:
+        if (
+            token
+            and re.fullmatch(r"[A-Za-z0-9_.\-]+", token)
+            and token not in tables
+            and token.lower() != alias
+        ):
             tables.append(token)
     return tables
 
@@ -125,12 +131,21 @@ def detect_block_tables() -> list[str]:
     except Exception:  # noqa: BLE001
         logger.exception("Could not list pf tables")
         return []
+    alias = ""
+    try:
+        alias = str(get_blocking_settings().get("blocking_alias") or "").strip().lower()
+    except Exception:  # noqa: BLE001 - detection must not break on settings errors
+        alias = ""
     tables: list[str] = []
     for line in output.splitlines():
         name = line.strip()
         if not name or not re.fullmatch(r"[A-Za-z0-9_.\-]+", name):
             continue
         low = name.lower()
+        # Never list our own blocking alias: it is not a foreign block list and
+        # treating it as one would be a self-reference.
+        if alias and low == alias:
+            continue
         if any(pattern in low for pattern in _AUTO_TABLE_PATTERNS) and name not in tables:
             tables.append(name)
     return tables

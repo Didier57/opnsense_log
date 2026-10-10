@@ -75,7 +75,9 @@ class Settings(BaseSettings):
     # pf tables / firewall aliases that already block IPs (CrowdSec, Q-Feeds,
     # IDS...). Comma or space separated. An IP already present in one of these is
     # not blocked again and no notification is sent.
-    blocking_skip_tables: str = "crowdsec_blacklists, crowdsec6_blacklists"
+    blocking_skip_tables: str = (
+        "crowdsec_blacklists, crowdsec6_blacklists, crowdsec_blocklists, crowdsec6_blocklists"
+    )
     # pf tables detected automatically on the firewall (``pfctl -sTables``) whose
     # name looks like an existing block list. Merged with ``blocking_skip_tables``
     # so an IP already blocked by another plugin is never blocked twice.
