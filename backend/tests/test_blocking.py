@@ -578,3 +578,33 @@ def test_unblock_ips_ha_writes_peer_directly(database, monkeypatch):
     assert fakes["master"].rows["BLOCK"]["content"] == []
     assert fakes["peer"].rows["BLOCK"]["content"] == []
     assert fakes["master"].ha_syncs == 1
+
+
+def test_reconcile_alias_ha_uses_cluster_blocks(database, monkeypatch):
+    # On a slave the local blocked list is empty; reconcile must use the union of
+    # every HA member's records and write the alias on each node.
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg(blocking_enabled=True))
+    monkeypatch.setattr(blocker, "_cluster_targets", lambda *a, **k: (["master", "slave"], "master", True))
+    fakes = {"master": FakeAPI(), "slave": FakeAPI()}
+    monkeypatch.setattr(blocker, "_api", lambda iid=None, **k: fakes[iid])
+    database.execute_write(
+        'INSERT INTO blocked_ips ("ip", "rule", "source", "added_at", "expires_at", "hits") '
+        "VALUES ('1.2.3.4', 'detection', 'auto', now(), NULL, 1)"
+    )
+
+    result = blocker.reconcile_alias("slave")
+
+    assert result["ok"] is True
+    assert result["reconciled"] == 1
+    assert "1.2.3.4" in fakes["master"].rows["BLOCK"]["content"]
+    assert "1.2.3.4" in fakes["slave"].rows["BLOCK"]["content"]
+    assert fakes["master"].ha_syncs == 1
+
+
+def test_list_blocked_ha_unions_members(database, monkeypatch):
+    monkeypatch.setattr(blocker, "_cluster_targets", lambda *a, **k: (["master", "slave"], "master", True))
+    database.execute_write(
+        'INSERT INTO blocked_ips ("ip", "rule", "source", "added_at", "expires_at", "hits") '
+        "VALUES ('1.2.3.4', 'detection', 'auto', now(), NULL, 1)"
+    )
+    assert [r["ip"] for r in blocker.list_blocked("slave")] == ["1.2.3.4"]

@@ -101,6 +101,67 @@ def _cluster_targets(instance_id: str | None) -> tuple[list[str], str, bool]:
     return [base or ""], (base or ""), False
 
 
+def _cluster_member_ids(instance_id: str | None) -> list[str]:
+    """Instance ids whose ``blocked_ips`` rows belong to the same HA cluster.
+
+    Blocks are recorded only in the database of the instance that triggered them
+    (typically the node running detection), so listing/reconciling must aggregate
+    every HA member's rows. Outside a cluster this is the instance itself.
+    """
+    members, _master, in_cluster = _cluster_targets(instance_id)
+    if in_cluster:
+        return members
+    return [resolve_instance_id(instance_id)]
+
+
+def _cluster_blocked_rows(
+    instance_id: str | None, *, exclude_expired: bool = False
+) -> list[tuple]:
+    """Union of the ``blocked_ips`` rows across every HA cluster member database."""
+    sql = 'SELECT "ip", "rule", "source", "added_at", "expires_at" FROM blocked_ips'
+    if exclude_expired:
+        sql += ' WHERE "expires_at" IS NULL OR "expires_at" > now()'
+    seen: dict[str, tuple] = {}
+    for member in _cluster_member_ids(instance_id):
+        rows = get_database(member).execute_read(sql).fetchall()
+        for row in rows:
+            ip = row[0]
+            if not ip:
+                continue
+            prev = seen.get(ip)
+            if prev is None or (row[3] and (prev[3] is None or row[3] > prev[3])):
+                seen[ip] = row
+    return list(seen.values())
+
+
+def _alias_remove_nodes(instance_id: str | None, alias: str, ips) -> list[str]:
+    """Remove ``ips`` from the alias on every HA member node. Best-effort."""
+    wanted = set(ips)
+    if not wanted:
+        return []
+    members, master_id, in_cluster = _cluster_targets(instance_id)
+    nodes = members if in_cluster else [instance_id]
+    touched: list[str] = []
+    for node in nodes:
+        try:
+            api = _api(node)
+            if not api.is_configured():
+                continue
+            row, content = api.get_alias_content(alias)
+            if row is None:
+                continue
+            keep = [c for c in content if c not in wanted]
+            if len(keep) != len(content):
+                api.set_alias_content(row, keep)
+                _reconfigure(api)
+                touched.append(node or "")
+        except APIError as exc:
+            logger.warning("Could not update alias on %s: %s", node, exc)
+    if in_cluster and nodes:
+        _ha_sync(_api(master_id))
+    return touched
+
+
 def _alias_add(api: OPNsenseAPI, alias: str, wanted: list[str]) -> tuple[list[str], list[str]]:
     """Add ``wanted`` IPs to a node's alias; returns ``(added, present)``."""
     row, content = api.get_alias_content(alias)
@@ -469,27 +530,24 @@ def prune_expired(instance_id: str | None = None) -> int:
     ttl = int(cfg.get("blocking_ttl_hours", 0) or 0)
     if ttl <= 0:
         return 0
-    db = get_database(resolve_instance_id(instance_id))
-    rows = db.execute_read(
-        'SELECT "ip" FROM blocked_ips WHERE "expires_at" IS NOT NULL AND "expires_at" < now()'
-    ).fetchall()
-    expired = [r[0] for r in rows]
+    members = _cluster_member_ids(instance_id)
+    expired: set[str] = set()
+    for member in members:
+        rows = get_database(member).execute_read(
+            'SELECT "ip" FROM blocked_ips WHERE "expires_at" IS NOT NULL AND "expires_at" < now()'
+        ).fetchall()
+        expired.update(r[0] for r in rows if r[0])
     if not expired:
         return 0
     alias = str(cfg.get("blocking_alias") or "").strip()
     if alias:
-        try:
-            api = _api(instance_id)
-            row, content = api.get_alias_content(alias)
-            if row is not None:
-                keep = [c for c in content if c not in set(expired)]
-                if len(keep) != len(content):
-                    api.set_alias_content(row, keep)
-                    _reconfigure(api)
-        except APIError as exc:
-            logger.warning("Could not prune alias: %s", exc)
+        _alias_remove_nodes(instance_id, alias, expired)
     marks = ", ".join("?" for _ in expired)
-    db.execute_write(f'DELETE FROM blocked_ips WHERE "ip" IN ({marks})', expired)
+    values = list(expired)
+    for member in members:
+        get_database(member).execute_write(
+            f'DELETE FROM blocked_ips WHERE "ip" IN ({marks})', values
+        )
     return len(expired)
 
 
@@ -535,17 +593,19 @@ def unblock_ips(ips: list[str], instance_id: str | None = None) -> dict:
                         logger.warning("HA: could not update alias on %s: %s", member, exc)
                 _ha_sync(api)
     marks = ", ".join("?" for _ in targets)
-    db = get_database(resolve_instance_id(instance_id))
-    db.execute_write(f'DELETE FROM blocked_ips WHERE "ip" IN ({marks})', targets)
-    # A manual unblock resets the escalation counter for these IPs.
-    db.execute_write(f'DELETE FROM block_counts WHERE "ip" IN ({marks})', targets)
+    # Clear the record from every HA member so the (shared) blocked list stays
+    # consistent whichever node the unblock is triggered from.
+    for member in _cluster_member_ids(instance_id):
+        mdb = get_database(member)
+        mdb.execute_write(f'DELETE FROM blocked_ips WHERE "ip" IN ({marks})', targets)
+        # A manual unblock resets the escalation counter for these IPs.
+        mdb.execute_write(f'DELETE FROM block_counts WHERE "ip" IN ({marks})', targets)
     return {"ok": True, "removed": targets}
 
 
 def list_blocked(instance_id: str | None = None) -> list[dict]:
-    rows = get_database(resolve_instance_id(instance_id)).execute_read(
-        'SELECT "ip", "rule", "source", "added_at", "expires_at" FROM blocked_ips ORDER BY "added_at" DESC'
-    ).fetchall()
+    rows = _cluster_blocked_rows(instance_id)
+    rows.sort(key=lambda r: (r[3] is not None, r[3]), reverse=True)
     return [
         {"ip": r[0], "rule": r[1], "source": r[2], "added_at": r[3], "expires_at": r[4]}
         for r in rows
@@ -562,29 +622,36 @@ def reconcile_alias(instance_id: str | None = None) -> dict:
     alias = str(cfg.get("blocking_alias") or "").strip()
     if not cfg.get("blocking_enabled") or not alias:
         return {"ok": True, "reconciled": 0}
-    rows = get_database(resolve_instance_id(instance_id)).execute_read(
-        'SELECT "ip" FROM blocked_ips WHERE "expires_at" IS NULL OR "expires_at" > now()'
-    ).fetchall()
-    desired = [r[0] for r in rows if r[0]]
+    # In an HA cluster the recorded blocks may live in any member's database
+    # (e.g. the master), so the desired set is the cluster-wide union.
+    desired = [
+        r[0] for r in _cluster_blocked_rows(instance_id, exclude_expired=True) if r[0]
+    ]
     if not desired:
         return {"ok": True, "reconciled": 0}
-    api = _api(instance_id)
+    members, master_id, in_cluster = _cluster_targets(instance_id)
+    api = _api(master_id if in_cluster else instance_id)
     if not api.is_configured():
         return {"ok": False, "error": "Clé API OPNsense non configurée", "reconciled": 0}
     try:
-        row, content = api.get_alias_content(alias)
-        existing = set(content)
-        missing = [ip for ip in desired if ip not in existing]
-        if missing:
-            if row is None:
-                api.ensure_host_alias(alias, missing)
-            else:
-                api.set_alias_content(row, content + missing)
-            _reconfigure(api)
-            logger.info("Reconciled %d missing IP(s) into alias '%s'", len(missing), alias)
-        return {"ok": True, "reconciled": len(missing), "missing": missing, "alias": alias}
+        added, _present = _alias_add(api, alias, desired)
     except APIError as exc:
         return {"ok": False, "error": str(exc), "reconciled": 0}
+    if in_cluster:
+        for member in members:
+            if member == master_id:
+                continue
+            try:
+                peer = _api(member)
+                if peer.is_configured():
+                    _alias_add(peer, alias, desired)
+                    logger.info("HA: reconcile propagated directly to %s", member)
+            except APIError as exc:
+                logger.warning("HA: could not reconcile alias on %s: %s", member, exc)
+        _ha_sync(api)
+    if added:
+        logger.info("Reconciled %d missing IP(s) into alias '%s'", len(added), alias)
+    return {"ok": True, "reconciled": len(added), "missing": added, "alias": alias}
 
 
 def alias_ips(instance_id: str | None = None) -> dict:
@@ -625,23 +692,35 @@ def clean_alias_orphans(instance_id: str | None = None) -> dict:
     alias = str(cfg.get("blocking_alias") or "").strip()
     if not alias:
         return {"ok": False, "error": "Aucun alias de blocage configuré", "removed": []}
-    api = _api(instance_id)
+    members, master_id, in_cluster = _cluster_targets(instance_id)
+    api = _api(master_id if in_cluster else instance_id)
     if not api.is_configured():
         return {"ok": False, "error": "Clé API OPNsense non configurée", "removed": []}
-    db = get_database(resolve_instance_id(instance_id))
-    tracked = {
-        r[0] for r in db.execute_read('SELECT "ip" FROM blocked_ips').fetchall() if r[0]
-    }
+    # Orphan = present in the alias but absent from the cluster-wide blocked set.
+    tracked = {r[0] for r in _cluster_blocked_rows(instance_id) if r[0]}
+    nodes = members if in_cluster else [instance_id]
+    removed: list[str] = []
     try:
-        row, content = api.get_alias_content(alias)
-        if row is None:
-            return {"ok": True, "removed": [], "alias": alias, "message": "Alias introuvable"}
-        orphans = [ip for ip in content if ip not in tracked]
-        if orphans:
-            keep = [ip for ip in content if ip in tracked]
-            api.set_alias_content(row, keep)
-            _reconfigure(api)
-            logger.info("Removed %d orphan IP(s) from alias '%s'", len(orphans), alias)
-        return {"ok": True, "removed": orphans, "alias": alias}
+        for node in nodes:
+            if node == master_id:
+                node_api = api
+            else:
+                node_api = _api(node)
+            if not node_api.is_configured():
+                continue
+            row, content = node_api.get_alias_content(alias)
+            if row is None:
+                continue
+            orphans = [ip for ip in content if ip not in tracked]
+            if orphans:
+                keep = [ip for ip in content if ip in tracked]
+                node_api.set_alias_content(row, keep)
+                _reconfigure(node_api)
+                removed.extend(orphans)
     except APIError as exc:
-        return {"ok": False, "error": str(exc), "removed": []}
+        return {"ok": False, "error": str(exc), "removed": removed}
+    if removed:
+        logger.info("Removed %d orphan IP(s) from alias '%s'", len(removed), alias)
+    if in_cluster:
+        _ha_sync(api)
+    return {"ok": True, "removed": removed, "alias": alias}
