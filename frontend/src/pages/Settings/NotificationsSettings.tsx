@@ -101,7 +101,7 @@ export function NotificationsSettings() {
   return (
     <>
       <div className="topbar">
-        <h2>Notifications par e-mail (SMTP)</h2>
+        <h2>Configuration SMTP</h2>
         <div className="filters">
           <button onClick={test} disabled={busy}>
             Tester l'envoi

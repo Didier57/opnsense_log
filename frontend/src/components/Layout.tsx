@@ -50,7 +50,7 @@ const NAV: { group: string; admin?: boolean; links: { to: string; label: string 
       { to: "/settings", label: "Application" },
       { to: "/instances", label: "Instances" },
       { to: "/settings/users", label: "Utilisateurs" },
-      { to: "/settings/notifications", label: "Notifications" },
+      { to: "/settings/notifications", label: "Configuration SMTP" },
       { to: "/settings/geoip", label: "Géolocalisation" },
       { to: "/settings/opnsense", label: "OPNsense" },
     ],

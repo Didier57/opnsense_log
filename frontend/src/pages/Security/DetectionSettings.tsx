@@ -522,7 +522,7 @@ export function DetectionSettings() {
         {notifyError && <p className="error">{notifyError}</p>}
         <p className="muted" style={{ fontSize: 12 }}>
           Chaque OPNsense choisit ses propres canaux (les deux sont cumulables). « E-mail » utilise
-          le serveur SMTP global (Paramètres → Notifications). « NTFY » envoie vers votre sujet ntfy
+          le serveur SMTP global (Paramètres → Configuration SMTP). « NTFY » envoie vers votre sujet ntfy
           (application mobile ou bureau, ex. <span className="mono">https://ntfy.sh/mon-sujet</span>)
           — un par instance.
         </p>

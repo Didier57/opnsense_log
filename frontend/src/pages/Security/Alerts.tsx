@@ -206,7 +206,7 @@ export function Alerts() {
       </div>
       <p className="muted">
         La détection s'exécute en arrière-plan même sans navigateur ouvert. Configurez les seuils dans
-        Détection et les envois dans Notifications.
+        Détection et les envois dans Configuration SMTP.
       </p>
     </>
   );
