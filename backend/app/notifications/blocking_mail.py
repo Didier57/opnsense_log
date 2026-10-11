@@ -36,6 +36,19 @@ def _fmt_dt(value) -> str:
         return str(value)
 
 
+def _strip_ip(reason: str, ip: str) -> str:
+    """Drop a leading IP token so the address is not shown twice.
+
+    Detection alerts already start with the source IP (e.g.
+    ``89.149.222.99 a été bloqué 20 fois en 120s``); since the IP is rendered on
+    its own, the duplicated prefix is removed.
+    """
+    text = (reason or "").strip()
+    if text.lower().startswith(ip.lower()):
+        text = text[len(ip):].lstrip(" \t-—:,")
+    return text
+
+
 def _unblock_url(ip: str, days: int, instance_id: str | None = None) -> str:
     base = get_public_url()
     if not base:
@@ -110,21 +123,27 @@ def send_block_notification(
     lines: list[str] = []
     ntfy_lines: list[str] = []
     for ip in targets:
-        reason = str(reasons.get(ip) or default_reason)
+        reason = _strip_ip(str(reasons.get(ip) or default_reason), ip)
         url = _unblock_url(ip, days, instance_id=instance_id)
         info = details.get(ip) or {}
         hits = info.get("hits")
         expires = _fmt_dt(info.get("expires_at"))
         rows.append({"ip": ip, "reason": reason, "url": url, "hits": hits, "expires": expires})
-        extra = ""
+        # Assemble the block info once (reason + occurrence count + expiry) so the
+        # IP is never repeated; the leading reason IP was stripped above.
+        parts = [reason] if reason else []
         if hits:
-            extra += f" (blocages : {hits})"
+            parts.append(f"blocages : {hits}")
         if expires:
-            extra += f" [expire : {expires}]"
-        lines.append(f"- {ip} — {reason}{extra}" + (f"\n  Débloquer : {url}" if url else ""))
+            parts.append(f"expire : {expires}")
+        detail = " · ".join(parts)
+        lines.append(
+            f"- {ip}" + (f" : {detail}" if detail else "")
+            + (f"\n  Débloquer : {url}" if url else "")
+        )
         # ntfy carries the one-tap "Débloquer" action button, so the raw URL is
         # left out of the pushed text (it would be an unreadable long link).
-        ntfy_lines.append(f"- {ip} — {reason}{extra}")
+        ntfy_lines.append(f"**{ip}**" + (f" — {detail}" if detail else ""))
 
     subject = "[OPNsense Log Analyzer] IP bloquée : " + ", ".join(targets)
     header = f"Les adresses IP suivantes ont été bloquées (règle : {rule_label}) :\n\n"
