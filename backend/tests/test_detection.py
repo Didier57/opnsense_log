@@ -166,8 +166,8 @@ def test_notification_cooldown_suppresses_duplicates(db, monkeypatch):
     )
     monkeypatch.setattr(
         deng,
-        "send_email",
-        lambda subject, body, settings=None, html=None: (calls.append(subject), {"ok": True, "message": "sent"})[1],
+        "deliver",
+        lambda subject, body, html=None, **kwargs: (calls.append(subject), {"ok": True, "message": "sent"})[1],
     )
     cfg = {"detection_notify_cooldown_min": 60}
     first = {
@@ -201,8 +201,8 @@ def _capture_mail(monkeypatch) -> list[str]:
     )
     monkeypatch.setattr(
         deng,
-        "send_email",
-        lambda subject, body, settings=None, html=None: (calls.append(subject), {"ok": True, "message": "sent"})[1],
+        "deliver",
+        lambda subject, body, html=None, **kwargs: (calls.append(subject), {"ok": True, "message": "sent"})[1],
     )
     return calls
 

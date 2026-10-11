@@ -306,6 +306,14 @@ export const api = {
     }),
   testNotifications: () =>
     request<{ ok: boolean; message: string }>("/api/settings/notifications/test", { method: "POST" }),
+  notifySettings: () => request<Record<string, unknown>>("/api/settings/notify"),
+  updateNotify: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/api/settings/notify", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  testNotify: () =>
+    request<{ ok: boolean; message: string }>("/api/settings/notify/test", { method: "POST" }),
 
   exportUrl: (format: string) => `/api/export?fmt=${format}`,
   export: async (payload: SearchRequest, format: string): Promise<Blob> => {

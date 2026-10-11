@@ -82,9 +82,24 @@ const DEFAULT_BLOCKING: BlockingForm = {
   blocking_ttl_max_hours: 0,
 };
 
+interface NotifyForm {
+  notify_channel: string;
+  ntfy_url: string;
+  ntfy_token: string;
+}
+
+const DEFAULT_NOTIFY: NotifyForm = {
+  notify_channel: "email",
+  ntfy_url: "",
+  ntfy_token: "",
+};
+
 export function DetectionSettings() {
   const [form, setForm] = useState<DetectionForm>(DEFAULT_FORM);
   const [blocking, setBlocking] = useState<BlockingForm>(DEFAULT_BLOCKING);
+  const [notify, setNotify] = useState<NotifyForm>(DEFAULT_NOTIFY);
+  const [notifyMsg, setNotifyMsg] = useState("");
+  const [notifyError, setNotifyError] = useState("");
   const [blocked, setBlocked] = useState<BlockedIp[]>([]);
   const [allowlist, setAllowlist] = useState<AllowlistEntry[]>([]);
   const [allowItems, setAllowItems] = useState("");
@@ -129,6 +144,18 @@ export function DetectionSettings() {
       .then((data) => setAllowlist(data.items))
       .catch(() => undefined);
 
+  const loadNotify = () =>
+    api
+      .notifySettings()
+      .then((data) =>
+        setNotify((prev) => ({
+          notify_channel: String(data.notify_channel ?? "email"),
+          ntfy_url: String(data.ntfy_url ?? ""),
+          ntfy_token: data.has_ntfy_token ? prev.ntfy_token : "",
+        })),
+      )
+      .catch(() => undefined);
+
   const load = () =>
     api
       .detectionSettings()
@@ -160,6 +187,7 @@ export function DetectionSettings() {
     loadBlocking();
     loadBlocked();
     loadAllowlist();
+    loadNotify();
   }, []);
 
   const save = async () => {
@@ -186,6 +214,34 @@ export function DetectionSettings() {
       loadBlocking();
     } catch (e) {
       setBlockError(String(e));
+    }
+  };
+
+  const saveNotify = async () => {
+    setNotifyMsg("");
+    setNotifyError("");
+    try {
+      const payload: Record<string, unknown> = {
+        notify_channel: notify.notify_channel,
+        ntfy_url: notify.ntfy_url,
+      };
+      if (notify.ntfy_token) payload.ntfy_token = notify.ntfy_token;
+      await api.updateNotify(payload);
+      setNotifyMsg("Enregistré.");
+      loadNotify();
+    } catch (e) {
+      setNotifyError(String(e));
+    }
+  };
+
+  const testNotify = async () => {
+    setNotifyMsg("");
+    setNotifyError("");
+    try {
+      const result = await api.testNotify();
+      setNotifyMsg(result.message || (result.ok ? "Test envoyé." : "Échec du test."));
+    } catch (e) {
+      setNotifyError(String(e));
     }
   };
 
@@ -393,6 +449,63 @@ export function DetectionSettings() {
             }
           />
         </label>
+      </div>
+
+      <div className="panel">
+        <div className="filters" style={{ justifyContent: "space-between" }}>
+          <h3 style={{ margin: 0 }}>Notifications d'alerte (par OPNsense)</h3>
+          <div className="filters">
+            <button onClick={testNotify}>Tester</button>
+            <button className="active" onClick={saveNotify}>
+              Enregistrer
+            </button>
+          </div>
+        </div>
+        <p className="muted" style={{ fontSize: 12 }}>
+          Chaque OPNsense choisit son propre canal. « E-mail » utilise le serveur SMTP global
+          (Paramètres → Notifications). « NTFY » envoie vers votre sujet ntfy (application mobile ou
+          bureau, ex. <span className="mono">https://ntfy.sh/mon-sujet</span>) — un par instance.
+        </p>
+        <div className="grid-2">
+          <label className="muted" style={{ fontSize: 12 }}>
+            Canal de notification
+            <br />
+            <select
+              value={notify.notify_channel}
+              onChange={(e) => setNotify({ ...notify, notify_channel: e.target.value })}
+            >
+              <option value="email">E-mail (SMTP global)</option>
+              <option value="ntfy">NTFY</option>
+            </select>
+          </label>
+          {notify.notify_channel === "ntfy" && (
+            <label className="muted" style={{ fontSize: 12 }}>
+              Adresse NTFY (URL complète du sujet)
+              <br />
+              <input
+                style={{ width: "100%" }}
+                placeholder="https://ntfy.sh/mon-sujet"
+                value={notify.ntfy_url}
+                onChange={(e) => setNotify({ ...notify, ntfy_url: e.target.value })}
+              />
+            </label>
+          )}
+        </div>
+        {notify.notify_channel === "ntfy" && (
+          <label className="muted" style={{ fontSize: 12 }}>
+            Jeton d'accès NTFY (optionnel — sujet protégé)
+            <br />
+            <input
+              type="password"
+              style={{ width: "100%" }}
+              placeholder="Laisser vide si le sujet est public"
+              value={notify.ntfy_token}
+              onChange={(e) => setNotify({ ...notify, ntfy_token: e.target.value })}
+            />
+          </label>
+        )}
+        {notifyMsg && <p className="muted">{notifyMsg}</p>}
+        {notifyError && <p className="error">{notifyError}</p>}
       </div>
 
       <div className="panel">

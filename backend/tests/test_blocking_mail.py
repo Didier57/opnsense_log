@@ -24,14 +24,14 @@ def test_unblock_token_rejects_other_scope():
 def test_block_notification_includes_unblock_link(monkeypatch):
     captured = {}
 
-    def fake_send(subject, body, settings=None, html=None):
+    def fake_send(subject, body, html=None, **kwargs):
         captured["subject"] = subject
         captured["body"] = body
         captured["html"] = html
         return {"ok": True, "message": "sent"}
 
     monkeypatch.setattr(bm, "get_public_url", lambda: "https://logs.example.com")
-    monkeypatch.setattr(bm, "send_email", fake_send)
+    monkeypatch.setattr(bm, "deliver", fake_send)
 
     bm.send_block_notification(["1.2.3.4"], rule="port_scan", days=3)
 
@@ -43,13 +43,13 @@ def test_block_notification_includes_unblock_link(monkeypatch):
 def test_block_notification_includes_hits_and_expiry(monkeypatch):
     captured = {}
 
-    def fake_send(subject, body, settings=None, html=None):
+    def fake_send(subject, body, html=None, **kwargs):
         captured["body"] = body
         captured["html"] = html
         return {"ok": True, "message": "sent"}
 
     monkeypatch.setattr(bm, "get_public_url", lambda: "https://logs.example.com")
-    monkeypatch.setattr(bm, "send_email", fake_send)
+    monkeypatch.setattr(bm, "deliver", fake_send)
 
     from datetime import datetime, timezone
 
@@ -68,13 +68,13 @@ def test_block_notification_includes_hits_and_expiry(monkeypatch):
 def test_block_notification_without_public_url(monkeypatch):
     captured = {}
 
-    def fake_send(subject, body, settings=None, html=None):
+    def fake_send(subject, body, html=None, **kwargs):
         captured["body"] = body
         captured["html"] = html
         return {"ok": True, "message": "sent"}
 
     monkeypatch.setattr(bm, "get_public_url", lambda: "")
-    monkeypatch.setattr(bm, "send_email", fake_send)
+    monkeypatch.setattr(bm, "deliver", fake_send)
 
     bm.send_block_notification(["1.2.3.4"], rule="bruteforce")
 

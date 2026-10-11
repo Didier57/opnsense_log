@@ -11,7 +11,7 @@ import logging
 
 from ..core.security import create_unblock_token
 from ..settings_store import get_public_url
-from .mailer import send_email
+from .dispatch import deliver
 
 logger = logging.getLogger("opnsense.blocking_mail")
 
@@ -133,7 +133,20 @@ def send_block_notification(
             "\n(Renseignez l'URL publique dans Paramètres → Application "
             "pour activer le lien de déblocage.)\n"
         )
-    result = send_email(subject, body, html=_html_page(rows, rule_label))
+    actions = [
+        {"action": "view", "label": f"Débloquer {row['ip']}", "url": row["url"]}
+        for row in rows
+        if row["url"]
+    ][:3]
+    result = deliver(
+        subject,
+        body,
+        html=_html_page(rows, rule_label),
+        instance_id=instance_id,
+        title=subject,
+        tags=["warning", "shield"],
+        actions=actions or None,
+    )
     if not result.get("ok"):
         logger.warning("Block notification not sent: %s", result.get("message"))
     return result

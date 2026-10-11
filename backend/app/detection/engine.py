@@ -18,8 +18,9 @@ from zoneinfo import ZoneInfo
 
 from ..config import settings
 from ..instances import resolve_instance_id
-from ..notifications.mailer import send_email
+from ..notifications.dispatch import deliver
 from ..notifications.store import get_smtp_settings
+from ..settings_store import get_public_url
 from ..storage.database import get_database
 from .store import get_detection_settings
 
@@ -544,11 +545,23 @@ def _notify(alerts: list[dict], cfg: dict, blocked_by_us: set[str] | None = None
         return
 
     try:
-        smtp = get_smtp_settings(mask_password=False)
+        from ..notifications.instance_store import get_notify_settings
+
+        notify = get_notify_settings(instance_id, mask_token=False)
     except Exception:  # noqa: BLE001
-        return
-    if not smtp.get("smtp_enabled"):
-        return
+        notify = {"notify_channel": "email"}
+    channel = notify.get("notify_channel") or "email"
+    if channel == "ntfy":
+        if not str(notify.get("ntfy_url") or "").strip():
+            logger.info("Alert notification skipped: ntfy URL not configured")
+            return
+    else:
+        try:
+            smtp = get_smtp_settings(mask_password=False)
+        except Exception:  # noqa: BLE001
+            return
+        if not smtp.get("smtp_enabled"):
+            return
 
     cooldown_min = int(cfg.get("detection_notify_cooldown_min", 60) or 0)
     to_send = alerts
@@ -564,7 +577,20 @@ def _notify(alerts: list[dict], cfg: dict, blocked_by_us: set[str] | None = None
     ]
     subject = f"[OPNsense Log Analyzer] {len(to_send)} alerte(s) de sécurité"
     body = "Nouvelles alertes détectées :\n\n" + "\n".join(lines) + "\n\n-- Analyseur de logs OPNsense"
-    result = send_email(subject, body, smtp, html=_alerts_html(to_send))
+    actions = None
+    if channel == "ntfy":
+        base = get_public_url()
+        if base:
+            actions = [{"action": "view", "label": "Ouvrir les alertes", "url": f"{base}/security/alerts"}]
+    result = deliver(
+        subject,
+        body,
+        html=_alerts_html(to_send),
+        instance_id=instance_id,
+        title=subject,
+        tags=["warning"],
+        actions=actions,
+    )
     if result.get("ok"):
         try:
             _mark_notified([a["id"] for a in to_send], instance_id)

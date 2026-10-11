@@ -7,6 +7,8 @@ from ..detection.allowlist_store import add_allowlist, list_allowlist, remove_al
 from ..detection.blocking_store import get_blocking_settings, update_blocking_settings
 from ..detection.engine import clear_alerts, list_alerts, run_cycle
 from ..detection.store import get_detection_settings, update_detection_settings
+from ..notifications.dispatch import deliver
+from ..notifications.instance_store import get_notify_settings, update_notify_settings
 from ..notifications.mailer import send_test_email
 from ..notifications.store import get_smtp_settings, update_smtp_settings
 from ..opnsense.blocker import (
@@ -25,6 +27,7 @@ from .schemas import (
     BlockRequest,
     DetectionSettings,
     NotificationSettings,
+    NotifySettings,
 )
 
 router = APIRouter(prefix="/api", tags=["detection"])
@@ -78,6 +81,31 @@ def put_notifications(payload: NotificationSettings, user: str = Depends(require
 @router.post("/settings/notifications/test")
 def test_notifications(user: str = Depends(require_admin)) -> dict:
     return send_test_email()
+
+
+@router.get("/settings/notify")
+def get_notify(instance: str | None = InstanceId, user: str = Depends(require_admin)) -> dict:
+    return get_notify_settings(instance_id=instance, mask_token=True)
+
+
+@router.put("/settings/notify")
+def put_notify(
+    payload: NotifySettings,
+    instance: str | None = InstanceId,
+    user: str = Depends(require_admin),
+) -> dict:
+    return update_notify_settings(payload.model_dump(exclude_none=True), instance_id=instance)
+
+
+@router.post("/settings/notify/test")
+def test_notify(instance: str | None = InstanceId, user: str = Depends(require_admin)) -> dict:
+    return deliver(
+        "[OPNsense Log Analyzer] Test de notification",
+        "Ceci est un message de test envoyé par l'analyseur de logs OPNsense.",
+        instance_id=instance,
+        title="[OPNsense Log Analyzer] Test",
+        tags=["bell"],
+    )
 
 
 @router.get("/settings/blocking")

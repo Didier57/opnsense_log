@@ -91,6 +91,12 @@ class NotificationSettings(BaseModel):
     smtp_to: str | None = None
 
 
+class NotifySettings(BaseModel):
+    notify_channel: str | None = None
+    ntfy_url: str | None = None
+    ntfy_token: str | None = None
+
+
 class GeoIpSettings(BaseModel):
     geoip_enabled: bool | None = None
     geoip_account_id: str | None = None
