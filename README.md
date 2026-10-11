@@ -30,7 +30,8 @@ configuration OPNsense via SSH.
 - **Tableau de bord et analyse** : cartes (événements/bloqués/autorisés/interfaces), séries
   temporelles, AUTORISÉ vs BLOQUÉ, trafic par interface, principales IP source/destination,
   principaux ports, principales règles, principaux protocoles, et une section d'analyse par
-  dimension.
+  dimension. Un **sélecteur de période** (jour / semaine / mois / année, avec flèches
+  précédent/suivant) borne les statistiques au lieu de tout l'historique.
 - **Correspondance interfaces et règles** récupérée depuis OPNsense via SSH, affichant par
   ex. `LAN (vtnet0)` au lieu du périphérique brut, avec **historique des changements de
   règles** conservé dans le temps.
@@ -46,19 +47,24 @@ configuration OPNsense via SSH.
   les pics de trafic. Les **ports des services de messagerie** sont ignorés par défaut
   (réglable) pour éviter les faux positifs. Les alertes sont listées dans **Sécurité →
   Alertes** (avec **recherche** sur toutes les colonnes et le **label de la règle** qui a
-  bloqué la source) et peuvent être envoyées par e-mail (SMTP) — la notification est ignorée
-  si la source est déjà bloquée par l'application ou gérée par un autre plugin. Réglages
-  depuis l'interface web (Sécurité → Détection, Paramètres → Notifications).
+  bloqué la source) et peuvent être **notifiées par e-mail (SMTP) et/ou NTFY** (canal choisi
+  par instance) — la notification est ignorée si la source est déjà bloquée par l'application
+  ou gérée par un autre plugin. Réglages depuis l'interface web (Sécurité → Détection ; SMTP
+  global dans Paramètres → Notifications).
 - **Blocage automatique** : ajout des IP publiques des alertes (force brute / scan de ports /
   balayage réseau) dans un **alias pare-feu OPNsense de type « Host(s) »** via l'API REST, en
   mode manuel ou automatique. **Mode simulation (dry-run)**, **liste blanche** gérée depuis
   l'interface, **anti-doublon** (détection automatique des listes de blocage déjà présentes —
   CrowdSec, Q-Feeds… — pour ne jamais re-bloquer), **réconciliation de l'alias** au démarrage,
   et **durée qui double à chaque récidive**, renouvelée juste avant expiration tant que l'IP
-  insiste (e-mail uniquement au premier blocage).
-- **Bascule HA OPNsense** : pour un cluster Haute Disponibilité, une instance peut **hériter de
-  la clé API du nœud maître** (la synchronisation HA répliquant les clés, une clé gérée
-  localement serait écrasée).
+  insiste (e-mail uniquement au premier blocage). L'interface affiche le **contenu réel de
+  l'alias** (avec signalement des IP **orphelines**) et propose un bouton **« Nettoyer
+  l'alias »**.
+- **Cluster HA OPNsense** : définissez le **rôle** (maître / esclave) de l'instance. Un esclave
+  **hérite de la clé API du maître** (la synchro HA répliquant les clés, une clé locale serait
+  écrasée) ; les blocages et retraits sont écrits **sur le maître** puis répliqués vers les
+  esclaves via la **synchronisation de configuration HA d'OPNsense** (la synchro HA doit être
+  configurée sur le maître, avec « Aliases » activé).
 - **Géolocalisation (pays)** : pays d'origine des IP publiques (base gratuite DB-IP Lite, ou
   MaxMind GeoLite2 si une clé est fournie), avec drapeaux et statistiques par pays.
 - **Recherche de noms d'hôtes** : DNS inverse plus les noms locaux issus des baux DHCP du
@@ -66,7 +72,12 @@ configuration OPNsense via SSH.
 - **Import des journaux OPNsense** : lecture des fichiers de journaux du pare-feu par SSH
   pour combler les événements manquants (au démarrage et via un bouton), y compris les trous
   au milieu d'une journée.
-- **Authentification** (locale, hachée avec Argon2) avec jetons JWT.
+- **WHOIS intégré** : depuis les alertes et la liste des IP bloquées, un bouton interroge le
+  WHOIS de l'adresse via TCP/43 (IANA → RIR), sans captcha ni site externe.
+- **Authentification multi-utilisateurs** (locale, hachée avec Argon2) avec jetons JWT et
+  **rôles** : **admin** (accès complet) et **viewer** (Tableau de bord, Journaux, Analyse).
+  Le compte administrateur se crée à la **première connexion** ; les comptes se gèrent dans
+  **Paramètres → Utilisateurs**.
 - **Dockerisée** : une seule image servant à la fois l'API et le frontend, avec un
   healthcheck.
 
@@ -83,20 +94,21 @@ OPNsense ── syslog ──▶ Récepteur syslog ──▶ File de réception 
 ```
 backend/
   app/
-    api/         routeurs FastAPI (health, auth, instances, logs, search, statistics,
+    api/         routeurs FastAPI (health, auth, users, instances, logs, search, statistics,
                  filters, rules, interfaces, settings, system, export, live, lookup,
-                 detection, geoip, opnsense_import, blocking_public)
+                 detection, geoip, opnsense_import, blocking_public, whois)
     parser/      analyseurs filterlog / RFC3164 / RFC5424 / personnalisé
     storage/     base DuckDB, dépôt, rétention
     syslog/      serveur syslog UDP/TCP avec file + workers par lots
     opnsense/    client SSH, chargeur config.xml, baux DHCP, synchronisation, stockage des réglages
     detection/   détecteurs scan de ports / force brute (globale et par service) /
                  balayage réseau / pics, liste blanche, stockage des alertes
-    notifications/ notifications e-mail SMTP
+    notifications/ notifications e-mail SMTP et NTFY (canal par instance)
     websocket/   concentrateur Temps réel
     core/        journalisation, compteurs, sécurité
     main.py      application FastAPI + cycle de vie
-  tests/         tests analyseur / recherche / ssh / détection / blocage / multi-instance
+  tests/         tests analyseur / recherche / ssh / détection / blocage / multi-instance /
+                 utilisateurs / WHOIS / NTFY / HA
   scripts/       hash_password.py
 frontend/
   src/           interface React + Vite + TypeScript
@@ -234,23 +246,27 @@ Déjà implémenté au-delà de la V1 :
 
 - **Moteur de détection** — scans de ports, force brute (globale et par port de service),
   balayage réseau et (en option) pics de trafic, avec liste d'alertes, recherche et
-  notifications e-mail (SMTP).
+  notifications e-mail (SMTP) et/ou NTFY.
 - **Blocage automatique** — alias pare-feu OPNsense via l'API REST : modes manuel/auto/
   simulation (dry-run), liste blanche, anti-doublon (listes existantes détectées), 
-  réconciliation d'alias et durée croissante à chaque récidive.
-- **Bascule HA OPNsense** — héritage de la clé API du nœud maître pour un cluster Haute
-  Disponibilité.
+  réconciliation d'alias, durée qui double à chaque récidive et nettoyage des IP orphelines.
+- **Cluster HA OPNsense** — rôles maître / esclave, héritage de la clé API du maître et
+  propagation des blocages via la synchro de configuration HA d'OPNsense.
 - **Géolocalisation (pays)** — pays des IP publiques avec drapeaux et statistiques.
 - **Recherche de noms d'hôtes** — DNS inverse et noms des baux DHCP/Dnsmasq.
 - **Import des journaux OPNsense** — rattrapage des événements manquants par SSH.
 - **Historique des changements de règles**.
 - **Multi-OPNsense** — plusieurs pare-feu gérés en parallèle (bases, ports syslog et
   configurations séparés, sélecteur d'instance), e-mail partagé.
+- **Multi-utilisateur** — rôles **admin** / **viewer**, création de l'admin à la première
+  connexion, gestion des comptes dans l'application.
+- **WHOIS intégré** — interrogation WHOIS (IANA → RIR) depuis les alertes et les IP bloquées.
+- **Notifications NTFY** — canal push par instance, en complément de l'e-mail SMTP.
 
 Encore prévu :
 
 - **V2** — statistiques avancées, alias, export Excel, webhooks, API complète documentée,
-  multi-utilisateur, LDAP/OIDC.
+  LDAP/OIDC.
 - **V3** — détection enrichie : détection d'anomalies, alertes IP / renseignement sur les
   menaces et corrélation d'événements.
 
