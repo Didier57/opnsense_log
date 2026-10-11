@@ -92,7 +92,8 @@ class NotificationSettings(BaseModel):
 
 
 class NotifySettings(BaseModel):
-    notify_channel: str | None = None
+    notify_email: bool | None = None
+    notify_ntfy: bool | None = None
     ntfy_url: str | None = None
     ntfy_token: str | None = None
 

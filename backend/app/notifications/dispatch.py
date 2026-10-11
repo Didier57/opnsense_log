@@ -1,7 +1,8 @@
-"""Deliver a notification through the per-instance channel (e-mail or ntfy).
+"""Deliver a notification through the per-instance channels.
 
-Callers pass the message once; this module reads the instance's channel choice
-and sends it with the matching transport. It never raises.
+Callers pass the message once; this module reads the instance's channel choices
+(e-mail and/or ntfy, which can be enabled together) and sends it with each
+enabled transport. It never raises.
 """
 from __future__ import annotations
 
@@ -21,23 +22,41 @@ def deliver(
     tags: list[str] | None = None,
     actions: list[dict] | None = None,
 ) -> dict:
-    """Send using the instance's configured channel. Returns {ok, message, channel}."""
+    """Send using the instance's enabled channels. Returns {ok, message, channel}."""
     try:
         cfg = get_notify_settings(instance_id, mask_token=False)
     except Exception:  # noqa: BLE001 - fall back to e-mail
-        cfg = {"notify_channel": "email", "ntfy_url": "", "ntfy_token": ""}
-    channel = cfg.get("notify_channel") or "email"
-    if channel == "ntfy":
-        result = send_ntfy(
-            cfg.get("ntfy_url") or "",
-            title or subject,
-            body,
-            priority=priority,
-            tags=tags,
-            actions=actions,
-            token=cfg.get("ntfy_token") or None,
+        cfg = {"notify_email": True, "notify_ntfy": False, "ntfy_url": "", "ntfy_token": ""}
+
+    channels: list[str] = []
+    results: list[dict] = []
+
+    if cfg.get("notify_email"):
+        channels.append("email")
+        results.append(send_email(subject, body, html=html))
+
+    ntfy_url = str(cfg.get("ntfy_url") or "").strip()
+    if cfg.get("notify_ntfy") and ntfy_url:
+        channels.append("ntfy")
+        results.append(
+            send_ntfy(
+                ntfy_url,
+                title or subject,
+                body,
+                priority=priority,
+                tags=tags,
+                actions=actions,
+                token=cfg.get("ntfy_token") or None,
+            )
         )
-    else:
-        result = send_email(subject, body, html=html)
-    result["channel"] = channel
-    return result
+
+    if not results:
+        return {"ok": False, "message": "Aucun canal de notification activé", "channel": ""}
+
+    message = " ; ".join(str(r.get("message", "")) for r in results if r.get("message"))
+    return {
+        "ok": any(r.get("ok") for r in results),
+        "message": message,
+        "channel": "+".join(channels),
+        "results": results,
+    }

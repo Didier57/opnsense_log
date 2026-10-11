@@ -549,19 +549,18 @@ def _notify(alerts: list[dict], cfg: dict, blocked_by_us: set[str] | None = None
 
         notify = get_notify_settings(instance_id, mask_token=False)
     except Exception:  # noqa: BLE001
-        notify = {"notify_channel": "email"}
-    channel = notify.get("notify_channel") or "email"
-    if channel == "ntfy":
-        if not str(notify.get("ntfy_url") or "").strip():
-            logger.info("Alert notification skipped: ntfy URL not configured")
-            return
-    else:
+        notify = {"notify_email": True, "notify_ntfy": False}
+    email_on = bool(notify.get("notify_email"))
+    ntfy_on = bool(notify.get("notify_ntfy")) and bool(str(notify.get("ntfy_url") or "").strip())
+    if email_on:
         try:
             smtp = get_smtp_settings(mask_password=False)
         except Exception:  # noqa: BLE001
-            return
-        if not smtp.get("smtp_enabled"):
-            return
+            smtp = {}
+        email_on = bool(smtp.get("smtp_enabled"))
+    if not (email_on or ntfy_on):
+        logger.info("Alert notification skipped: no notification channel enabled")
+        return
 
     cooldown_min = int(cfg.get("detection_notify_cooldown_min", 60) or 0)
     to_send = alerts
@@ -578,7 +577,7 @@ def _notify(alerts: list[dict], cfg: dict, blocked_by_us: set[str] | None = None
     subject = f"[OPNsense Log Analyzer] {len(to_send)} alerte(s) de sécurité"
     body = "Nouvelles alertes détectées :\n\n" + "\n".join(lines) + "\n\n-- Analyseur de logs OPNsense"
     actions = None
-    if channel == "ntfy":
+    if ntfy_on:
         base = get_public_url()
         if base:
             actions = [{"action": "view", "label": "Ouvrir les alertes", "url": f"{base}/security/alerts"}]

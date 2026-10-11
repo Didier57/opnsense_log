@@ -138,8 +138,10 @@ class Settings(BaseSettings):
     # Minimum delay before e-mailing about the same (rule, source IP) again.
     # Persisted in the database, so it also suppresses duplicates after a restart.
     detection_notify_cooldown_min: int = 60
-    # Per-instance notification channel: "email" (global SMTP) or "ntfy".
-    notify_channel: str = "email"
+    # Per-instance notification channels (can be enabled together): e-mail via
+    # the global SMTP settings and/or a push to an ntfy topic.
+    notify_email: bool = True
+    notify_ntfy: bool = False
     # ntfy target: full topic URL (e.g. https://ntfy.sh/mon-sujet or a
     # self-hosted server) and an optional access token (Bearer).
     ntfy_url: str = ""

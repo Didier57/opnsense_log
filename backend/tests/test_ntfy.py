@@ -72,15 +72,17 @@ def test_notify_settings_roundtrip(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(ns, "resolve_instance_id", lambda *a, **k: None)
 
     defaults = ns.get_notify_settings()
-    assert defaults["notify_channel"] == "email"
+    assert defaults["notify_email"] is True
+    assert defaults["notify_ntfy"] is False
     assert defaults["ntfy_url"] == ""
     assert defaults["has_ntfy_token"] is False
     assert "ntfy_token" not in defaults
 
     updated = ns.update_notify_settings(
-        {"notify_channel": "ntfy", "ntfy_url": "https://ntfy.sh/x", "ntfy_token": "tok"}
+        {"notify_email": False, "notify_ntfy": True, "ntfy_url": "https://ntfy.sh/x", "ntfy_token": "tok"}
     )
-    assert updated["notify_channel"] == "ntfy"
+    assert updated["notify_email"] is False
+    assert updated["notify_ntfy"] is True
     assert updated["ntfy_url"] == "https://ntfy.sh/x"
     assert updated["has_ntfy_token"] is True
     assert "ntfy_token" not in updated
@@ -91,7 +93,7 @@ def test_dispatch_uses_ntfy_when_selected(monkeypatch) -> None:
     monkeypatch.setattr(
         dispatch,
         "get_notify_settings",
-        lambda *a, **k: {"notify_channel": "ntfy", "ntfy_url": "https://ntfy.sh/x", "ntfy_token": ""},
+        lambda *a, **k: {"notify_email": False, "notify_ntfy": True, "ntfy_url": "https://ntfy.sh/x", "ntfy_token": ""},
     )
     called: dict = {}
 
@@ -107,7 +109,11 @@ def test_dispatch_uses_ntfy_when_selected(monkeypatch) -> None:
 
 
 def test_dispatch_defaults_to_email(monkeypatch) -> None:
-    monkeypatch.setattr(dispatch, "get_notify_settings", lambda *a, **k: {"notify_channel": "email"})
+    monkeypatch.setattr(
+        dispatch,
+        "get_notify_settings",
+        lambda *a, **k: {"notify_email": True, "notify_ntfy": False},
+    )
     called: dict = {}
 
     def fake_email(subject, body, **kwargs):  # noqa: ANN001
@@ -118,3 +124,22 @@ def test_dispatch_defaults_to_email(monkeypatch) -> None:
     result = dispatch.deliver("Sujet", "Corps")
     assert result["channel"] == "email"
     assert called["subject"] == "Sujet"
+
+
+def test_dispatch_sends_both_channels(monkeypatch) -> None:
+    monkeypatch.setattr(
+        dispatch,
+        "get_notify_settings",
+        lambda *a, **k: {"notify_email": True, "notify_ntfy": True, "ntfy_url": "https://ntfy.sh/x"},
+    )
+    sent: dict = {}
+    monkeypatch.setattr(
+        dispatch, "send_email", lambda subject, body, **k: sent.update(email=subject) or {"ok": True, "message": "e"}
+    )
+    monkeypatch.setattr(
+        dispatch, "send_ntfy", lambda url, title, message, **k: sent.update(ntfy=url) or {"ok": True, "message": "n"}
+    )
+    result = dispatch.deliver("Sujet", "Corps")
+    assert result["channel"] == "email+ntfy"
+    assert sent.get("email") == "Sujet"
+    assert sent.get("ntfy") == "https://ntfy.sh/x"
