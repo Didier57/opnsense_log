@@ -51,7 +51,9 @@ class OPNsenseSettings(BaseModel):
     opnsense_api_scheme: str | None = None
     opnsense_api_port: int | None = None
     opnsense_ha_enabled: bool | None = None
+    opnsense_ha_role: str | None = None
     opnsense_ha_master: str | None = None
+    opnsense_ha_slaves: str | None = None
 
 
 class ApplicationSettings(BaseModel):

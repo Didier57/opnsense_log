@@ -28,7 +28,9 @@ _KEYS = [
     "opnsense_api_scheme",
     "opnsense_api_port",
     "opnsense_ha_enabled",
+    "opnsense_ha_role",
     "opnsense_ha_master",
+    "opnsense_ha_slaves",
 ]
 
 
@@ -60,10 +62,23 @@ def get_opnsense_settings(
     # overwritten. When HA is enabled, this instance therefore uses the API
     # key/secret of the chosen master instance instead of its own.
     ha_enabled = _as_bool(value("opnsense_ha_enabled"))
+    ha_role = str(value("opnsense_ha_role") or "").strip().lower()
     ha_master = value("opnsense_ha_master") or ""
+    ha_slaves = value("opnsense_ha_slaves") or ""
+    if ha_enabled and ha_role not in {"master", "slave"}:
+        # Backwards compatibility: an instance that only declared a master is a
+        # slave; otherwise no role.
+        ha_role = "slave" if ha_master else ""
     api_key = value("opnsense_api_key")
     api_secret = value("opnsense_api_secret")
-    if _inherit_ha and ha_enabled and ha_master and ha_master != resolved:
+    inherit = bool(
+        _inherit_ha
+        and ha_enabled
+        and ha_role == "slave"
+        and ha_master
+        and ha_master != resolved
+    )
+    if inherit:
         try:
             master = get_opnsense_settings(
                 mask_password=False, instance_id=ha_master, _inherit_ha=False
@@ -92,8 +107,10 @@ def get_opnsense_settings(
         "opnsense_api_scheme": (str(value("opnsense_api_scheme") or "https").lower() or "https"),
         "opnsense_api_port": int(value("opnsense_api_port") or 443),
         "opnsense_ha_enabled": ha_enabled,
+        "opnsense_ha_role": ha_role,
         "opnsense_ha_master": ha_master,
-        "api_key_from_master": bool(ha_enabled and ha_master and ha_master != resolved),
+        "opnsense_ha_slaves": ha_slaves,
+        "api_key_from_master": inherit,
     }
     if not mask_password:
         result["opnsense_password"] = value("opnsense_password")
@@ -115,3 +132,66 @@ def update_opnsense_settings(payload: dict, instance_id: str | None = None) -> d
                 [key, str(value)],
             )
     return get_opnsense_settings(instance_id=instance_id)
+
+
+def _ha_role(setting: dict) -> str:
+    role = str(setting.get("opnsense_ha_role") or "").strip().lower()
+    if role in {"master", "slave"}:
+        return role
+    return "slave" if (setting.get("opnsense_ha_master") or "") else ""
+
+
+def _ha_slave_ids(setting: dict) -> list[str]:
+    raw = str(setting.get("opnsense_ha_slaves") or "")
+    return [token.strip() for token in raw.split(",") if token.strip()]
+
+
+def _ha_cluster(instance_id: str | None = None) -> tuple[str | None, list[str]]:
+    """Return ``(master_id, member_ids)`` for the HA cluster of ``instance_id``.
+
+    The cluster is centred on the master node: it contains the master, the
+    slaves it declares (``opnsense_ha_slaves``) and any instance that declares
+    itself a slave of that master (``opnsense_ha_master``). Outside a cluster
+    the instance is alone and the master is ``None``.
+    """
+    base = resolve_instance_id(instance_id)
+    if not base:
+        return None, []
+    try:
+        from ..instances import list_instances
+    except Exception:  # noqa: BLE001
+        return None, [base]
+    infos: dict[str, dict] = {}
+    for inst in list_instances():
+        iid = inst.get("id")
+        if not iid:
+            continue
+        setting = get_opnsense_settings(instance_id=iid, _inherit_ha=False)
+        infos[iid] = {
+            "role": _ha_role(setting) if setting.get("opnsense_ha_enabled") else "",
+            "master": setting.get("opnsense_ha_master") or "",
+            "slaves": _ha_slave_ids(setting),
+        }
+    info = infos.get(base)
+    if not info or info["role"] not in {"master", "slave"}:
+        return None, [base]
+    master = base if info["role"] == "master" else (info["master"] or base)
+    members = {master}
+    for sid in infos.get(master, {}).get("slaves", []):
+        if sid in infos:
+            members.add(sid)
+    for iid, other in infos.items():
+        if other["role"] == "slave" and other["master"] == master:
+            members.add(iid)
+    return master, sorted(members)
+
+
+def ha_cluster_ids(instance_id: str | None = None) -> list[str]:
+    """Ids of the instances forming the HA cluster of ``instance_id``."""
+    return _ha_cluster(instance_id)[1]
+
+
+def ha_cluster_master(instance_id: str | None = None) -> str | None:
+    """Master instance id of the cluster, or ``None`` when not in a cluster."""
+    master, members = _ha_cluster(instance_id)
+    return master if len(members) > 1 else None

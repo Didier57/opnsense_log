@@ -40,7 +40,9 @@ export function OpnsenseSettings() {
         next.opnsense_sync_enabled = Boolean(data.opnsense_sync_enabled);
         next.opnsense_import_on_start = Boolean(data.opnsense_import_on_start);
         next.opnsense_ha_enabled = Boolean(data.opnsense_ha_enabled);
+        next.opnsense_ha_role = data.opnsense_ha_role ?? (data.opnsense_ha_master ? "slave" : "slave");
         next.opnsense_ha_master = data.opnsense_ha_master ?? "";
+        next.opnsense_ha_slaves = data.opnsense_ha_slaves ?? "";
         setHasPassword(Boolean(data.has_password));
         setHasApiKey(Boolean(data.has_api_key));
         setHasApiSecret(Boolean(data.has_api_secret));
@@ -154,10 +156,10 @@ export function OpnsenseSettings() {
           </button>
           <button
             onClick={generateKey}
-            disabled={busy || Boolean(form.opnsense_ha_enabled)}
+            disabled={busy || (Boolean(form.opnsense_ha_enabled) && (form.opnsense_ha_role || "slave") === "slave")}
             title={
-              Boolean(form.opnsense_ha_enabled)
-                ? "En HA, générez la clé sur l'instance maître : elle sera héritée ici"
+              Boolean(form.opnsense_ha_enabled) && (form.opnsense_ha_role || "slave") === "slave"
+                ? "Nœud esclave : générez la clé sur l'instance maître, elle sera héritée ici"
                 : undefined
             }
           >
@@ -193,7 +195,9 @@ export function OpnsenseSettings() {
               setForm({
                 ...form,
                 opnsense_ha_enabled: e.target.checked,
+                opnsense_ha_role: e.target.checked ? form.opnsense_ha_role || "slave" : "",
                 opnsense_ha_master: e.target.checked ? form.opnsense_ha_master || "" : "",
+                opnsense_ha_slaves: e.target.checked ? form.opnsense_ha_slaves || "" : "",
               })
             }
           />
@@ -202,27 +206,93 @@ export function OpnsenseSettings() {
         {form.opnsense_ha_enabled && (
           <div style={{ marginBottom: 10 }}>
             <label className="muted" style={{ display: "block", marginBottom: 4 }}>
-              Instance maître (clé API héritée)
+              Rôle dans le cluster
             </label>
             <select
-              value={form.opnsense_ha_master ?? ""}
-              onChange={(e) => setForm({ ...form, opnsense_ha_master: e.target.value })}
+              value={form.opnsense_ha_role || "slave"}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  opnsense_ha_role: e.target.value,
+                  opnsense_ha_master: e.target.value === "slave" ? form.opnsense_ha_master || "" : "",
+                  opnsense_ha_slaves: e.target.value === "master" ? form.opnsense_ha_slaves || "" : "",
+                })
+              }
               style={{ width: 320 }}
             >
-              <option value="">— Choisir —</option>
-              {instances
-                .filter((inst) => inst.id !== instance?.id)
-                .map((inst) => (
-                  <option key={inst.id} value={inst.id}>
-                    {inst.name}
-                    {inst.enabled ? "" : " (désactivée)"}
-                  </option>
-                ))}
+              <option value="master">Maître</option>
+              <option value="slave">Esclave</option>
             </select>
+            {(form.opnsense_ha_role || "slave") === "slave" ? (
+              <div style={{ marginTop: 10 }}>
+                <label className="muted" style={{ display: "block", marginBottom: 4 }}>
+                  Instance maître (clé API héritée)
+                </label>
+                <select
+                  value={form.opnsense_ha_master ?? ""}
+                  onChange={(e) => setForm({ ...form, opnsense_ha_master: e.target.value })}
+                  style={{ width: 320 }}
+                >
+                  <option value="">— Choisir —</option>
+                  {instances
+                    .filter((inst) => inst.id !== instance?.id)
+                    .map((inst) => (
+                      <option key={inst.id} value={inst.id}>
+                        {inst.name}
+                        {inst.enabled ? "" : " (désactivée)"}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            ) : (
+              <div style={{ marginTop: 10 }}>
+                <label className="muted" style={{ display: "block", marginBottom: 4 }}>
+                  Instance(s) esclave(s)
+                </label>
+                <select
+                  multiple
+                  value={String(form.opnsense_ha_slaves ?? "")
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean)}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      opnsense_ha_slaves: Array.from(e.target.selectedOptions)
+                        .map((o) => o.value)
+                        .join(","),
+                    })
+                  }
+                  style={{ width: 320, height: 110 }}
+                >
+                  {instances
+                    .filter((inst) => inst.id !== instance?.id)
+                    .map((inst) => (
+                      <option key={inst.id} value={inst.id}>
+                        {inst.name}
+                        {inst.enabled ? "" : " (désactivée)"}
+                      </option>
+                    ))}
+                </select>
+                <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                  Maintiens Ctrl (ou ⌘) pour en sélectionner plusieurs.
+                </p>
+              </div>
+            )}
             <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-              En HA, OPNsense réplique la configuration (clés API comprises) du maître. La clé et le
-              secret de cette instance sont donc <strong>hérités en direct</strong> de l'instance
-              maître : une seule clé sert aux deux nœuds, plus de désynchronisation.
+              {(form.opnsense_ha_role || "slave") === "slave" ? (
+                <>
+                  En HA, OPNsense réplique la configuration (clés API comprises) du maître. La clé et
+                  le secret de cette instance sont donc <strong>hérités en direct</strong> de
+                  l'instance maître : une seule clé sert à tous les nœuds.
+                </>
+              ) : (
+                <>
+                  Nœud <strong>maître</strong> : sa clé API est utilisée par tous les nœuds du
+                  cluster. Les <strong>ajouts et retraits d'IP bloquées sont appliqués sur toutes les
+                  instances</strong> du cluster HA.
+                </>
+              )}
             </p>
           </div>
         )}
@@ -240,6 +310,7 @@ export function OpnsenseSettings() {
               value={form[field.key] ?? ""}
               disabled={
                 Boolean(form.opnsense_ha_enabled) &&
+                (form.opnsense_ha_role || "slave") === "slave" &&
                 (field.key === "opnsense_api_key" || field.key === "opnsense_api_secret")
               }
               placeholder={

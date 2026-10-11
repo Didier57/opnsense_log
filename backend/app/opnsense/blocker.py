@@ -67,6 +67,38 @@ def _reconfigure(api: OPNsenseAPI) -> None:
         logger.warning("Filter reload not confirmed: %s", exc)
 
 
+def _ha_sync(api: OPNsenseAPI) -> None:
+    """Trigger the OPNsense HA configuration sync on the master node.
+
+    The alias is only written on the master; this asks OPNsense to replicate the
+    configuration (aliases included, when selected) to the HA peers. Best-effort:
+    a failed sync never fails the operation performed on the master.
+    """
+    try:
+        api.ha_sync()
+    except APIError as exc:
+        logger.warning("HA configuration sync not confirmed: %s", exc)
+
+
+def _blocking_target(instance_id: str | None) -> tuple[str, bool]:
+    """Instance whose firewall alias is edited, and whether to trigger HA sync.
+
+    Inside an HA cluster the alias is written on the MASTER node only and the
+    configuration is then synchronised to the slaves. Returns
+    ``(target_instance_id, in_cluster)``.
+    """
+    base = resolve_instance_id(instance_id)
+    try:
+        from .settings_store import ha_cluster_master
+
+        master = ha_cluster_master(instance_id)
+    except Exception:  # noqa: BLE001 - never break blocking on HA lookup
+        master = None
+    if master:
+        return master, True
+    return (base or ""), False
+
+
 def _whitelist_nets(text: str) -> list:
     nets = []
     for token in str(text or "").replace(",", " ").split():
@@ -331,7 +363,8 @@ def apply_ips(ips: list[str], rule: str = "", source: str = "manual", reasons: d
             "message": "Mode simulation : aucune IP n'a été bloquée",
         }
 
-    api = _api(instance_id)
+    target_id, in_cluster = _blocking_target(instance_id)
+    api = _api(target_id)
     if not api.is_configured():
         return {"ok": False, "error": "Clé API OPNsense non configurée", "added": []}
 
@@ -351,6 +384,11 @@ def apply_ips(ips: list[str], rule: str = "", source: str = "manual", reasons: d
                 _reconfigure(api)
     except APIError as exc:
         return {"ok": False, "error": str(exc), "added": []}
+
+    # Inside an HA cluster the alias lives on the master; ask OPNsense to
+    # replicate the configuration (aliases included) to the slaves.
+    if in_cluster:
+        _ha_sync(api)
 
     ttl = int(cfg.get("blocking_ttl_hours", 0) or 0)
     escalate = bool(cfg.get("blocking_escalate", False))
@@ -444,7 +482,8 @@ def unblock_ips(ips: list[str], instance_id: str | None = None) -> dict:
     cfg = get_blocking_settings(instance_id)
     alias = str(cfg.get("blocking_alias") or "").strip()
     if alias:
-        api = _api(instance_id)
+        target_id, in_cluster = _blocking_target(instance_id)
+        api = _api(target_id)
         if api.is_configured():
             try:
                 row, content = api.get_alias_content(alias)
@@ -456,6 +495,9 @@ def unblock_ips(ips: list[str], instance_id: str | None = None) -> dict:
                         _reconfigure(api)
             except APIError as exc:
                 return {"ok": False, "error": str(exc)}
+            # Replicate the removal to the HA peers via the master's config sync.
+            if in_cluster:
+                _ha_sync(api)
     marks = ", ".join("?" for _ in targets)
     db = get_database(resolve_instance_id(instance_id))
     db.execute_write(f'DELETE FROM blocked_ips WHERE "ip" IN ({marks})', targets)

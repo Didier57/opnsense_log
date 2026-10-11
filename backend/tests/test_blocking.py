@@ -15,6 +15,7 @@ class FakeAPI:
     def __init__(self, rows: dict | None = None) -> None:
         self.rows = rows or {}
         self.reconfig = 0
+        self.ha_syncs = 0
 
     def is_configured(self) -> bool:
         return True
@@ -34,6 +35,10 @@ class FakeAPI:
 
     def reconfigure(self) -> None:
         self.reconfig += 1
+
+    def ha_sync(self) -> dict:
+        self.ha_syncs += 1
+        return {"ok": True}
 
 
 @pytest.fixture
@@ -507,3 +512,32 @@ def test_unblock_proceeds_when_reconfigure_fails(database, monkeypatch):
     assert result["ok"] is True
     assert fake.rows["BLOCK"]["content"] == []
     assert blocker.list_blocked() == []
+
+
+def test_apply_ips_ha_writes_master_and_triggers_sync(database, monkeypatch):
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg())
+    monkeypatch.setattr(blocker, "_blocking_target", lambda *a, **k: ("master", True))
+    fake = FakeAPI()
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
+
+    result = blocker.apply_ips(["1.2.3.4"])
+
+    assert result["ok"] is True
+    assert result["added"] == ["1.2.3.4"]
+    assert fake.rows["BLOCK"]["content"] == ["1.2.3.4"]
+    assert fake.ha_syncs == 1
+
+
+def test_unblock_ips_ha_triggers_sync(database, monkeypatch):
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg())
+    monkeypatch.setattr(blocker, "_blocking_target", lambda *a, **k: ("master", True))
+    fake = FakeAPI(
+        {"BLOCK": {"uuid": "u1", "name": "BLOCK", "type": "host", "enabled": "1", "content": ["1.2.3.4"]}}
+    )
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
+
+    result = blocker.unblock_ips(["1.2.3.4"])
+
+    assert result["ok"] is True
+    assert fake.rows["BLOCK"]["content"] == []
+    assert fake.ha_syncs == 1

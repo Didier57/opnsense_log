@@ -63,3 +63,48 @@ def test_ha_flags_roundtrip(dbs):
     slave = ss.get_opnsense_settings(instance_id="slave")
     assert slave["opnsense_ha_enabled"] is True
     assert slave["opnsense_ha_master"] == "master"
+
+
+def test_ha_master_role_uses_own_key(dbs):
+    ss.update_opnsense_settings({"opnsense_api_key": "MK"}, instance_id="master")
+    ss.update_opnsense_settings(
+        {
+            "opnsense_ha_enabled": True,
+            "opnsense_ha_role": "master",
+            "opnsense_ha_slaves": "slave",
+        },
+        instance_id="master",
+    )
+    master = ss.get_opnsense_settings(mask_password=False, instance_id="master")
+    assert master["opnsense_ha_role"] == "master"
+    assert master["opnsense_api_key"] == "MK"
+    assert master["api_key_from_master"] is False
+
+
+def test_ha_cluster_ids_groups_master_and_slaves(dbs, monkeypatch):
+    import app.instances as inst
+
+    monkeypatch.setattr(
+        inst,
+        "list_instances",
+        lambda: [{"id": "master"}, {"id": "slave"}, {"id": "other"}],
+    )
+    ss.update_opnsense_settings(
+        {
+            "opnsense_ha_enabled": True,
+            "opnsense_ha_role": "master",
+            "opnsense_ha_slaves": "slave",
+        },
+        instance_id="master",
+    )
+    ss.update_opnsense_settings(
+        {
+            "opnsense_ha_enabled": True,
+            "opnsense_ha_role": "slave",
+            "opnsense_ha_master": "master",
+        },
+        instance_id="slave",
+    )
+    assert ss.ha_cluster_ids("master") == ["master", "slave"]
+    assert ss.ha_cluster_ids("slave") == ["master", "slave"]
+    assert ss.ha_cluster_ids("other") == ["other"]

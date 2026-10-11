@@ -143,6 +143,14 @@ class OPNsenseAPI:
         """Reload the firewall filter after an alias change (can take a while)."""
         self._post("/firewall/alias/reconfigure", timeout=_RECONFIGURE_TIMEOUT)
 
+    def ha_sync(self) -> dict:
+        """Trigger the OPNsense HA configuration synchronisation (master node).
+
+        Pushes the current configuration (firewall aliases included, when
+        selected) to the configured HA peers. Available since OPNsense 25.1.
+        """
+        return self._post("/core/hasync/reconfigure", timeout=_RECONFIGURE_TIMEOUT)
+
     def test_connection(self) -> dict:
         try:
             self._post("/firewall/alias/searchItem", {"current": 1, "rowCount": 1})
