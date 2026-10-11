@@ -263,6 +263,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ ips: [ip] }),
     }),
+  blockPermanent: (ip: string) =>
+    request<{ ok: boolean; updated: string[]; error?: string }>("/api/blocking/permanent", {
+      method: "POST",
+      body: JSON.stringify({ ips: [ip] }),
+    }),
   detectBlockTables: () =>
     request<{ ok: boolean; tables: string[]; settings: Record<string, unknown> }>(
       "/api/settings/blocking/detect-tables",

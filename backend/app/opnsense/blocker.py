@@ -505,6 +505,54 @@ def apply_ips(ips: list[str], rule: str = "", source: str = "manual", reasons: d
     return {"ok": True, "added": added, "skipped": sorted(already), "alias": alias}
 
 
+def block_permanently(ips: list[str], instance_id: str | None = None) -> dict:
+    """Mark the given IPs as permanently blocked (never expiring).
+
+    The block's ``expires_at`` is cleared in every HA member database so
+    ``prune_expired`` never removes it, and the IPs are (re)added to the alias
+    on every cluster node. Only a manual "Retirer" removes them.
+    """
+    targets = [str(ip or "").strip() for ip in ips if str(ip or "").strip()]
+    if not targets:
+        return {"ok": False, "error": "Aucune IP fournie"}
+    cfg = get_blocking_settings(instance_id)
+    alias = str(cfg.get("blocking_alias") or "").strip()
+    # Clear the expiry in every HA member so the block survives pruning. The
+    # upsert also records a block for an IP that was only present in the alias
+    # (orphan) without an application row.
+    for member in _cluster_member_ids(instance_id):
+        mdb = get_database(member)
+        for ip in targets:
+            mdb.execute_write(
+                'INSERT INTO blocked_ips ("ip", "rule", "source", "added_at", "expires_at") '
+                "VALUES (?, 'manual', 'manual', now(), NULL) "
+                'ON CONFLICT ("ip") DO UPDATE SET "expires_at" = NULL',
+                [ip],
+            )
+    # Make sure the IPs are present in the alias on every node.
+    if alias:
+        members, master_id, in_cluster = _cluster_targets(instance_id)
+        master_api = _api(master_id)
+        if master_api.is_configured():
+            try:
+                _alias_add(master_api, alias, targets)
+            except APIError as exc:
+                return {"ok": False, "error": str(exc), "updated": []}
+            if in_cluster:
+                for member in members:
+                    if member == master_id:
+                        continue
+                    try:
+                        peer = _api(member)
+                        if peer.is_configured():
+                            _alias_add(peer, alias, targets)
+                            logger.info("HA: permanent block propagated directly to %s", member)
+                    except APIError as exc:
+                        logger.warning("HA: could not update alias on %s: %s", member, exc)
+                _ha_sync(master_api)
+    return {"ok": True, "updated": targets, "alias": alias}
+
+
 def block_alerts(alerts: list[dict], instance_id: str | None = None) -> dict:
     """Block source IPs of bruteforce/port-scan alerts (used in auto mode)."""
     ips = [

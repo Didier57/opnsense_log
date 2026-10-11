@@ -608,3 +608,42 @@ def test_list_blocked_ha_unions_members(database, monkeypatch):
         "VALUES ('1.2.3.4', 'detection', 'auto', now(), NULL, 1)"
     )
     assert [r["ip"] for r in blocker.list_blocked("slave")] == ["1.2.3.4"]
+
+
+def test_block_permanently_clears_expiry(database, monkeypatch):
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg())
+    fake = FakeAPI({"BLOCK": {"uuid": "u1", "name": "BLOCK", "type": "host", "enabled": "1", "content": ["1.2.3.4"]}})
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
+    database.execute_write(
+        'INSERT INTO blocked_ips ("ip", "rule", "source", "added_at", "expires_at", "hits") '
+        "VALUES ('1.2.3.4', 'detection', 'auto', now(), now() + INTERVAL 1 HOUR, 3)"
+    )
+
+    result = blocker.block_permanently(["1.2.3.4"])
+
+    assert result["ok"] is True
+    assert result["updated"] == ["1.2.3.4"]
+    row = database.execute_read(
+        'SELECT "expires_at", "rule" FROM blocked_ips WHERE "ip" = ?', ["1.2.3.4"]
+    ).fetchone()
+    assert row[0] is None
+    # An existing row keeps its original rule/source (only the expiry is cleared).
+    assert row[1] == "detection"
+    assert [r["ip"] for r in blocker.list_blocked()] == ["1.2.3.4"]
+
+
+def test_block_permanently_ha_writes_all_nodes(database, monkeypatch):
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg())
+    monkeypatch.setattr(blocker, "_cluster_targets", lambda *a, **k: (["master", "peer"], "master", True))
+    fakes = {"master": FakeAPI(), "peer": FakeAPI()}
+    monkeypatch.setattr(blocker, "_api", lambda iid=None, **k: fakes[iid])
+
+    result = blocker.block_permanently(["1.2.3.4"])
+
+    assert result["ok"] is True
+    assert fakes["master"].rows["BLOCK"]["content"] == ["1.2.3.4"]
+    assert fakes["peer"].rows["BLOCK"]["content"] == ["1.2.3.4"]
+    assert fakes["master"].ha_syncs == 1
+    assert fakes["peer"].ha_syncs == 0
+    row = database.execute_read('SELECT "expires_at" FROM blocked_ips WHERE "ip" = ?', ["1.2.3.4"]).fetchone()
+    assert row[0] is None

@@ -364,6 +364,20 @@ export function DetectionSettings() {
     }
   };
 
+  const blockPermanently = async (ip: string) => {
+    setBlockMessage("");
+    setBlockError("");
+    try {
+      const result = await api.blockPermanent(ip);
+      if (!result.ok) throw new Error(result.error || "Échec du blocage permanent");
+      setBlockMessage(`${ip} bloquée de façon permanente (n'expirera jamais).`);
+      loadBlocked();
+      loadAlias();
+    } catch (e) {
+      setBlockError(String(e));
+    }
+  };
+
   const addAllow = async () => {
     setBlockMessage("");
     setBlockError("");
@@ -737,6 +751,12 @@ export function DetectionSettings() {
                     <td className="mono">{row.added_at ? formatDateTime(row.added_at) : "—"}</td>
                     <td className="mono">{row.expires_at ? formatDateTime(row.expires_at) : "jamais"}</td>
                     <td>
+                      <button
+                        title="Bloquer définitivement cette IP (n'expirera jamais, retrait manuel uniquement)"
+                        onClick={() => blockPermanently(row.ip)}
+                      >
+                        Toujours bloquer
+                      </button>{" "}
                       <button
                         title="Retirer du blocage et ne plus jamais bloquer cette IP (liste blanche)"
                         onClick={() => trustIp(row.ip)}

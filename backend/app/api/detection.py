@@ -15,6 +15,7 @@ from ..notifications.store import get_smtp_settings, update_smtp_settings
 from ..opnsense.blocker import (
     alias_ips,
     apply_ips,
+    block_permanently,
     clean_alias_orphans,
     list_blocked,
     prune_expired,
@@ -190,6 +191,16 @@ def block_now(
     user: str = Depends(require_admin),
 ) -> dict:
     return apply_ips(payload.ips, rule="manual", source="manual", instance_id=instance)
+
+
+@router.post("/blocking/permanent")
+def block_now_permanent(
+    payload: BlockRequest,
+    instance: str | None = InstanceId,
+    user: str = Depends(require_admin),
+) -> dict:
+    """Block the given IPs permanently (never expiring, only a manual removal)."""
+    return block_permanently(payload.ips, instance_id=instance)
 
 
 @router.post("/blocking/prune")
