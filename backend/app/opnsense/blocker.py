@@ -507,3 +507,63 @@ def reconcile_alias(instance_id: str | None = None) -> dict:
         return {"ok": True, "reconciled": len(missing), "missing": missing, "alias": alias}
     except APIError as exc:
         return {"ok": False, "error": str(exc), "reconciled": 0}
+
+
+def alias_ips(instance_id: str | None = None) -> dict:
+    """Return the IPs currently stored in the configured firewall alias.
+
+    Lets the UI display the real alias content, including entries that are no
+    longer tracked as blocked (orphans left by an earlier failure).
+    """
+    cfg = get_blocking_settings(instance_id)
+    alias = str(cfg.get("blocking_alias") or "").strip()
+    if not alias:
+        return {"ok": True, "alias": "", "configured": False, "ips": []}
+    api = _api(instance_id)
+    if not api.is_configured():
+        return {
+            "ok": False,
+            "alias": alias,
+            "configured": False,
+            "ips": [],
+            "error": "Clé API OPNsense non configurée",
+        }
+    try:
+        row, content = api.get_alias_content(alias)
+    except APIError as exc:
+        return {"ok": False, "alias": alias, "configured": True, "ips": [], "error": str(exc)}
+    return {"ok": True, "alias": alias, "configured": True, "ips": content, "exists": row is not None}
+
+
+def clean_alias_orphans(instance_id: str | None = None) -> dict:
+    """Remove from the alias the IPs that are no longer tracked as blocked.
+
+    ``reconcile_alias`` only ADDS missing IPs; this removes the leftovers (an IP
+    still present in the firewall alias while its ``blocked_ips`` row is gone).
+    Only entries absent from the app's blocked list are removed, so a tracked
+    (and possibly not-yet-expired) block is never touched.
+    """
+    cfg = get_blocking_settings(instance_id)
+    alias = str(cfg.get("blocking_alias") or "").strip()
+    if not alias:
+        return {"ok": False, "error": "Aucun alias de blocage configuré", "removed": []}
+    api = _api(instance_id)
+    if not api.is_configured():
+        return {"ok": False, "error": "Clé API OPNsense non configurée", "removed": []}
+    db = get_database(resolve_instance_id(instance_id))
+    tracked = {
+        r[0] for r in db.execute_read('SELECT "ip" FROM blocked_ips').fetchall() if r[0]
+    }
+    try:
+        row, content = api.get_alias_content(alias)
+        if row is None:
+            return {"ok": True, "removed": [], "alias": alias, "message": "Alias introuvable"}
+        orphans = [ip for ip in content if ip not in tracked]
+        if orphans:
+            keep = [ip for ip in content if ip in tracked]
+            api.set_alias_content(row, keep)
+            _reconfigure(api)
+            logger.info("Removed %d orphan IP(s) from alias '%s'", len(orphans), alias)
+        return {"ok": True, "removed": orphans, "alias": alias}
+    except APIError as exc:
+        return {"ok": False, "error": str(exc), "removed": []}

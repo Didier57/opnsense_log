@@ -324,6 +324,40 @@ def test_reconcile_alias_disabled_is_noop(database, monkeypatch):
     assert fake.rows == {}
 
 
+def test_alias_ips_returns_content(database, monkeypatch):
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg())
+    fake = FakeAPI(
+        {"BLOCK": {"uuid": "u1", "name": "BLOCK", "type": "host", "enabled": "1", "content": ["1.2.3.4", "5.6.7.8"]}}
+    )
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
+    result = blocker.alias_ips()
+    assert result["ok"] is True
+    assert result["ips"] == ["1.2.3.4", "5.6.7.8"]
+
+
+def test_alias_ips_no_alias_configured(database, monkeypatch):
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg(blocking_alias=""))
+    result = blocker.alias_ips()
+    assert result == {"ok": True, "alias": "", "configured": False, "ips": []}
+
+
+def test_clean_alias_orphans_removes_untracked(database, monkeypatch):
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg())
+    fake = FakeAPI(
+        {"BLOCK": {"uuid": "u1", "name": "BLOCK", "type": "host", "enabled": "1", "content": ["1.2.3.4", "9.9.9.9"]}}
+    )
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
+    database.execute_write(
+        'INSERT INTO blocked_ips ("ip", "rule", "source", "added_at", "expires_at", "hits") '
+        "VALUES ('1.2.3.4', 'detection', 'auto', now(), NULL, 1)"
+    )
+    result = blocker.clean_alias_orphans()
+    assert result["ok"] is True
+    assert result["removed"] == ["9.9.9.9"]
+    assert fake.rows["BLOCK"]["content"] == ["1.2.3.4"]
+    assert fake.reconfig == 1
+
+
 def test_apply_ips_skips_already_blocked(database, monkeypatch):
     monkeypatch.setattr(
         blocker, "get_blocking_settings", lambda *a, **k: _cfg(blocking_skip_tables="crowdsec_blacklists")

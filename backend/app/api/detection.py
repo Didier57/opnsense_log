@@ -12,7 +12,9 @@ from ..notifications.instance_store import get_notify_settings, update_notify_se
 from ..notifications.mailer import send_test_email
 from ..notifications.store import get_smtp_settings, update_smtp_settings
 from ..opnsense.blocker import (
+    alias_ips,
     apply_ips,
+    clean_alias_orphans,
     list_blocked,
     prune_expired,
     reconcile_alias,
@@ -135,6 +137,18 @@ def detect_blocking_tables(
 def reconcile_blocking(instance: str | None = InstanceId, user: str = Depends(require_admin)) -> dict:
     """Re-add recorded blocks missing from the firewall alias (drift repair)."""
     return reconcile_alias(instance_id=instance)
+
+
+@router.get("/settings/blocking/alias")
+def get_blocking_alias(instance: str | None = InstanceId, user: str = Depends(require_admin)) -> dict:
+    """Show the IPs actually present in the firewall alias."""
+    return alias_ips(instance_id=instance)
+
+
+@router.post("/settings/blocking/clean-alias")
+def clean_blocking_alias(instance: str | None = InstanceId, user: str = Depends(require_admin)) -> dict:
+    """Remove from the alias the IPs no longer tracked as blocked (orphans)."""
+    return clean_alias_orphans(instance_id=instance)
 
 
 @router.get("/settings/blocking/allowlist")

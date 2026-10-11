@@ -103,6 +103,7 @@ export function DetectionSettings() {
   const [notifyMsg, setNotifyMsg] = useState("");
   const [notifyError, setNotifyError] = useState("");
   const [blocked, setBlocked] = useState<BlockedIp[]>([]);
+  const [aliasIps, setAliasIps] = useState<string[]>([]);
   const [allowlist, setAllowlist] = useState<AllowlistEntry[]>([]);
   const [allowItems, setAllowItems] = useState("");
   const [allowNote, setAllowNote] = useState("");
@@ -138,6 +139,12 @@ export function DetectionSettings() {
     api
       .blockedList()
       .then((data) => setBlocked(data.items))
+      .catch(() => undefined);
+
+  const loadAlias = () =>
+    api
+      .blockingAlias()
+      .then((data) => setAliasIps(data.ok ? data.ips : []))
       .catch(() => undefined);
 
   const loadAllowlist = () =>
@@ -189,6 +196,7 @@ export function DetectionSettings() {
     load();
     loadBlocking();
     loadBlocked();
+    loadAlias();
     loadAllowlist();
     loadNotify();
   }, []);
@@ -256,6 +264,7 @@ export function DetectionSettings() {
       const result = await api.pruneBlocking();
       setBlockMessage(`${result.removed} IP expirée(s) retirée(s).`);
       loadBlocked();
+      loadAlias();
     } catch (e) {
       setBlockError(String(e));
     }
@@ -293,6 +302,33 @@ export function DetectionSettings() {
           ? `${result.reconciled} IP re-ajoutée(s) à l'alias.`
           : "Alias déjà cohérent.",
       );
+      loadBlocked();
+      loadAlias();
+    } catch (e) {
+      setBlockError(String(e));
+    }
+  };
+
+  const cleanAlias = async () => {
+    if (
+      !window.confirm(
+        "Retirer de l'alias OPNsense toutes les IP absentes de la liste de blocage de l'application (orphelines) ?",
+      )
+    ) {
+      return;
+    }
+    setBlockMessage("");
+    setBlockError("");
+    try {
+      const result = await api.cleanAlias();
+      if (!result.ok) throw new Error(result.error || "Échec du nettoyage");
+      setBlockMessage(
+        result.removed.length
+          ? `${result.removed.length} IP orpheline(s) retirée(s) de l'alias.`
+          : "Aucune IP orpheline dans l'alias.",
+      );
+      loadBlocked();
+      loadAlias();
     } catch (e) {
       setBlockError(String(e));
     }
@@ -306,6 +342,7 @@ export function DetectionSettings() {
       if (!result.ok) throw new Error(result.error || "Échec du retrait");
       setBlockMessage(`${ip} retirée.`);
       loadBlocked();
+      loadAlias();
     } catch (e) {
       setBlockError(String(e));
     }
@@ -321,6 +358,7 @@ export function DetectionSettings() {
       if (!result.ok) throw new Error(result.error || "Échec du retrait");
       setBlockMessage(`${ip} n'est plus bloquée et est désormais en liste blanche.`);
       loadBlocked();
+      loadAlias();
     } catch (e) {
       setBlockError(String(e));
     }
@@ -379,6 +417,21 @@ export function DetectionSettings() {
       setBlockError(String(e));
     }
   };
+
+  const blockedIpSet = new Set(blocked.map((b) => b.ip));
+  const rows: (BlockedIp & { orphan?: boolean })[] = [
+    ...blocked,
+    ...aliasIps
+      .filter((ip) => !blockedIpSet.has(ip))
+      .map((ip) => ({
+        ip,
+        rule: "",
+        source: "",
+        added_at: "",
+        expires_at: null,
+        orphan: true,
+      })),
+  ];
 
   return (
     <>
@@ -524,6 +577,12 @@ export function DetectionSettings() {
           <div className="filters">
             <button onClick={pruneBlocked}>Retirer les IP expirées</button>
             <button onClick={reconcile}>Réconcilier l'alias</button>
+            <button
+              onClick={cleanAlias}
+              title="Retirer de l'alias les IP absentes de la liste de l'application (orphelines)"
+            >
+              Nettoyer l'alias
+            </button>
             <button className="active" onClick={saveBlocking}>
               Enregistrer le blocage
             </button>
@@ -646,7 +705,7 @@ export function DetectionSettings() {
         </div>
         {blockMessage && <p className="muted">{blockMessage}</p>}
         {blockError && <p className="error">{blockError}</p>}
-        {blocked.length > 0 && (
+        {rows.length > 0 && (
           <div className="table-scroll" style={{ maxHeight: 200 }}>
             <table className="log-table">
               <thead>
@@ -660,13 +719,21 @@ export function DetectionSettings() {
                 </tr>
               </thead>
               <tbody>
-                {blocked.map((row) => (
+                {rows.map((row) => (
                   <tr key={row.ip}>
                     <td className="mono">
                       {row.ip} <WhoisButton ip={row.ip} />
                     </td>
                     <td>{row.rule || "—"}</td>
-                    <td>{row.source || "—"}</td>
+                    <td>
+                      {row.orphan ? (
+                        <span className="muted" title="Présente dans l'alias OPNsense mais plus suivie par l'application">
+                          dans l'alias (orpheline)
+                        </span>
+                      ) : (
+                        row.source || "—"
+                      )}
+                    </td>
                     <td className="mono">{row.added_at ? formatDateTime(row.added_at) : "—"}</td>
                     <td className="mono">{row.expires_at ? formatDateTime(row.expires_at) : "jamais"}</td>
                     <td>

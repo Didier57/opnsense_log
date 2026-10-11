@@ -273,6 +273,20 @@ export const api = {
       "/api/settings/blocking/reconcile",
       { method: "POST" },
     ),
+  blockingAlias: () =>
+    request<{
+      ok: boolean;
+      alias: string;
+      configured: boolean;
+      ips: string[];
+      exists?: boolean;
+      error?: string;
+    }>("/api/settings/blocking/alias"),
+  cleanAlias: () =>
+    request<{ ok: boolean; removed: string[]; alias?: string; error?: string }>(
+      "/api/settings/blocking/clean-alias",
+      { method: "POST" },
+    ),
   allowlist: () => request<{ items: AllowlistEntry[] }>("/api/settings/blocking/allowlist"),
   addAllowlist: (ips: string[], note: string) =>
     request<{ ok: boolean; added: string[]; items: AllowlistEntry[] }>(
