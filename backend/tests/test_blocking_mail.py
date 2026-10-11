@@ -80,3 +80,22 @@ def test_block_notification_without_public_url(monkeypatch):
 
     assert "/api/blocking/unblock?token=" not in captured["html"]
     assert "URL publique non configurée" in captured["html"]
+
+
+def test_block_notification_ntfy_body_omits_raw_url(monkeypatch):
+    captured = {}
+
+    def fake_send(subject, body, html=None, ntfy_body=None, **kwargs):
+        captured["body"] = body
+        captured["ntfy_body"] = ntfy_body
+        return {"ok": True, "message": "sent"}
+
+    monkeypatch.setattr(bm, "get_public_url", lambda: "https://logs.example.com")
+    monkeypatch.setattr(bm, "deliver", fake_send)
+
+    bm.send_block_notification(["1.2.3.4"], rule="manual")
+
+    assert "/api/blocking/unblock?token=" in captured["body"]
+    assert "/api/blocking/unblock?token=" not in captured["ntfy_body"]
+    assert "1.2.3.4" in captured["ntfy_body"]
+    assert "Blocage manuel" in captured["ntfy_body"]

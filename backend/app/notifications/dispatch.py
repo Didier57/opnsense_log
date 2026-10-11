@@ -21,6 +21,7 @@ def deliver(
     priority: str = "default",
     tags: list[str] | None = None,
     actions: list[dict] | None = None,
+    ntfy_body: str | None = None,
 ) -> dict:
     """Send using the instance's enabled channels. Returns {ok, message, channel}."""
     try:
@@ -42,7 +43,7 @@ def deliver(
             send_ntfy(
                 ntfy_url,
                 title or subject,
-                body,
+                body if ntfy_body is None else ntfy_body,
                 priority=priority,
                 tags=tags,
                 actions=actions,

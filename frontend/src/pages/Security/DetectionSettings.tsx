@@ -465,6 +465,8 @@ export function DetectionSettings() {
             </button>
           </div>
         </div>
+        {notifyMsg && <p className="muted">{notifyMsg}</p>}
+        {notifyError && <p className="error">{notifyError}</p>}
         <p className="muted" style={{ fontSize: 12 }}>
           Chaque OPNsense choisit ses propres canaux (les deux sont cumulables). « E-mail » utilise
           le serveur SMTP global (Paramètres → Notifications). « NTFY » envoie vers votre sujet ntfy
@@ -514,8 +516,6 @@ export function DetectionSettings() {
             </label>
           </>
         )}
-        {notifyMsg && <p className="muted">{notifyMsg}</p>}
-        {notifyError && <p className="error">{notifyError}</p>}
       </div>
 
       <div className="panel">

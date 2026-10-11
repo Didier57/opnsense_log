@@ -108,6 +108,7 @@ def send_block_notification(
 
     rows: list[dict] = []
     lines: list[str] = []
+    ntfy_lines: list[str] = []
     for ip in targets:
         reason = str(reasons.get(ip) or default_reason)
         url = _unblock_url(ip, days, instance_id=instance_id)
@@ -121,18 +122,21 @@ def send_block_notification(
         if expires:
             extra += f" [expire : {expires}]"
         lines.append(f"- {ip} — {reason}{extra}" + (f"\n  Débloquer : {url}" if url else ""))
+        # ntfy carries the one-tap "Débloquer" action button, so the raw URL is
+        # left out of the pushed text (it would be an unreadable long link).
+        ntfy_lines.append(f"- {ip} — {reason}{extra}")
 
     subject = "[OPNsense Log Analyzer] IP bloquée : " + ", ".join(targets)
-    body = (
-        f"Les adresses IP suivantes ont été bloquées (règle : {rule_label}) :\n\n"
-        + "\n".join(lines)
-        + "\n"
+    header = f"Les adresses IP suivantes ont été bloquées (règle : {rule_label}) :\n\n"
+    hint = (
+        "\n(Renseignez l'URL publique dans Paramètres → Application "
+        "pour activer le lien de déblocage.)\n"
     )
+    body = header + "\n".join(lines) + "\n"
+    ntfy_body = header + "\n".join(ntfy_lines) + "\n"
     if not get_public_url():
-        body += (
-            "\n(Renseignez l'URL publique dans Paramètres → Application "
-            "pour activer le lien de déblocage.)\n"
-        )
+        body += hint
+        ntfy_body += hint
     actions = [
         {"action": "view", "label": f"Débloquer {row['ip']}", "url": row["url"]}
         for row in rows
@@ -146,6 +150,7 @@ def send_block_notification(
         title=subject,
         tags=["warning", "shield"],
         actions=actions or None,
+        ntfy_body=ntfy_body,
     )
     if not result.get("ok"):
         logger.warning("Block notification not sent: %s", result.get("message"))
