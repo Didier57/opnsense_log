@@ -428,3 +428,48 @@ def test_unblock_ips_removes_from_alias_and_list(database, monkeypatch):
     assert fake.rows["BLOCK"]["content"] == ["5.6.7.8"]
     assert fake.reconfig == 1
     assert blocker.list_blocked() == []
+
+
+def test_apply_ips_records_block_when_reconfigure_fails(database, monkeypatch):
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg())
+
+    class TimeoutAPI(FakeAPI):
+        def reconfigure(self) -> None:
+            raise blocker.APIError("OPNsense API timed out after 30s")
+
+    fake = TimeoutAPI()
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
+    monkeypatch.setattr(blocker, "send_block_notification", lambda *a, **k: {"ok": True})
+
+    result = blocker.apply_ips(["1.2.3.4"])
+
+    # The alias write succeeded even though the reload timed out: the IP must be
+    # recorded in the app too (alias and app stay in sync).
+    assert result["ok"] is True
+    assert result["added"] == ["1.2.3.4"]
+    assert fake.rows["BLOCK"]["content"] == ["1.2.3.4"]
+    assert [r["ip"] for r in blocker.list_blocked()] == ["1.2.3.4"]
+
+
+def test_unblock_proceeds_when_reconfigure_fails(database, monkeypatch):
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg())
+
+    class TimeoutAPI(FakeAPI):
+        def reconfigure(self) -> None:
+            raise blocker.APIError("OPNsense API timed out after 30s")
+
+    fake = TimeoutAPI(
+        {"BLOCK": {"uuid": "u1", "name": "BLOCK", "type": "host", "enabled": "1", "content": ["1.2.3.4"]}}
+    )
+    monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
+    database.execute_write(
+        'INSERT INTO blocked_ips ("ip", "rule", "source", "added_at", "expires_at") '
+        "VALUES ('1.2.3.4', 'manual', 'manual', now(), NULL)"
+    )
+
+    result = blocker.unblock_ips(["1.2.3.4"])
+
+    # A slow reload must not prevent the removal (the alias is updated first).
+    assert result["ok"] is True
+    assert fake.rows["BLOCK"]["content"] == []
+    assert blocker.list_blocked() == []

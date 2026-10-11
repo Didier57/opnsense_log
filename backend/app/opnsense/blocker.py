@@ -52,6 +52,21 @@ def _api(instance_id: str | None = None) -> OPNsenseAPI:
     )
 
 
+def _reconfigure(api: OPNsenseAPI) -> None:
+    """Apply an alias change on the firewall (trigger the filter reload).
+
+    The alias content is already persisted by the preceding ``setItem`` call;
+    this only triggers the reload that makes it effective. A reload can be slow,
+    so a timeout must not fail the whole operation — otherwise the IP would be
+    in the firewall alias but never recorded in the app (leaving the alias and
+    the app out of sync). We log and carry on.
+    """
+    try:
+        api.reconfigure()
+    except APIError as exc:
+        logger.warning("Filter reload not confirmed: %s", exc)
+
+
 def _whitelist_nets(text: str) -> list:
     nets = []
     for token in str(text or "").replace(",", " ").split():
@@ -324,7 +339,7 @@ def apply_ips(ips: list[str], rule: str = "", source: str = "manual", reasons: d
         row, content = api.get_alias_content(alias)
         if row is None:
             api.ensure_host_alias(alias, wanted)
-            api.reconfigure()
+            _reconfigure(api)
             added = wanted
             present: list[str] = []
         else:
@@ -333,7 +348,7 @@ def apply_ips(ips: list[str], rule: str = "", source: str = "manual", reasons: d
             present = [ip for ip in wanted if ip in existing]
             if added:
                 api.set_alias_content(row, content + added)
-                api.reconfigure()
+                _reconfigure(api)
     except APIError as exc:
         return {"ok": False, "error": str(exc), "added": []}
 
@@ -413,7 +428,7 @@ def prune_expired(instance_id: str | None = None) -> int:
                 keep = [c for c in content if c not in set(expired)]
                 if len(keep) != len(content):
                     api.set_alias_content(row, keep)
-                    api.reconfigure()
+                    _reconfigure(api)
         except APIError as exc:
             logger.warning("Could not prune alias: %s", exc)
     marks = ", ".join("?" for _ in expired)
@@ -438,7 +453,7 @@ def unblock_ips(ips: list[str], instance_id: str | None = None) -> dict:
                     keep = [c for c in content if c not in wanted]
                     if len(keep) != len(content):
                         api.set_alias_content(row, keep)
-                        api.reconfigure()
+                        _reconfigure(api)
             except APIError as exc:
                 return {"ok": False, "error": str(exc)}
     marks = ", ".join("?" for _ in targets)
@@ -487,7 +502,7 @@ def reconcile_alias(instance_id: str | None = None) -> dict:
                 api.ensure_host_alias(alias, missing)
             else:
                 api.set_alias_content(row, content + missing)
-            api.reconfigure()
+            _reconfigure(api)
             logger.info("Reconciled %d missing IP(s) into alias '%s'", len(missing), alias)
         return {"ok": True, "reconciled": len(missing), "missing": missing, "alias": alias}
     except APIError as exc:

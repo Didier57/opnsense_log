@@ -12,6 +12,10 @@ import httpx
 
 logger = logging.getLogger("opnsense.api")
 
+# A firewall reload triggered by /firewall/alias/reconfigure can take tens of
+# seconds, so it gets its own, longer timeout than the fast alias operations.
+_RECONFIGURE_TIMEOUT = 30
+
 
 class APIError(RuntimeError):
     pass
@@ -53,20 +57,20 @@ class OPNsenseAPI:
     def is_configured(self) -> bool:
         return bool(self.host and self.key and self.secret)
 
-    def _client(self) -> httpx.Client:
+    def _client(self, timeout: int | None = None) -> httpx.Client:
         return httpx.Client(
             base_url=self.base_url,
             auth=(self.key, self.secret),
             verify=self.verify,
-            timeout=self.timeout,
+            timeout=timeout or self.timeout,
             headers={"Accept": "application/json"},
         )
 
-    def _post(self, path: str, json: dict | None = None) -> dict:
+    def _post(self, path: str, json: dict | None = None, timeout: int | None = None) -> dict:
         if not self.is_configured():
             raise APIError("OPNsense API credentials are not configured")
         try:
-            with self._client() as client:
+            with self._client(timeout) as client:
                 response = client.post(path, json=json or {})
         except httpx.TimeoutException as exc:
             raise APIError(
@@ -136,7 +140,8 @@ class OPNsenseAPI:
         self._post(f"/firewall/alias/setItem/{uuid}", {"alias": payload})
 
     def reconfigure(self) -> None:
-        self._post("/firewall/alias/reconfigure")
+        """Reload the firewall filter after an alias change (can take a while)."""
+        self._post("/firewall/alias/reconfigure", timeout=_RECONFIGURE_TIMEOUT)
 
     def test_connection(self) -> dict:
         try:
