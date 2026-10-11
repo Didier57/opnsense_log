@@ -80,23 +80,41 @@ def _ha_sync(api: OPNsenseAPI) -> None:
         logger.warning("HA configuration sync not confirmed: %s", exc)
 
 
-def _blocking_target(instance_id: str | None) -> tuple[str, bool]:
-    """Instance whose firewall alias is edited, and whether to trigger HA sync.
+def _cluster_targets(instance_id: str | None) -> tuple[list[str], str, bool]:
+    """Instances whose firewall alias must be edited for an HA-aware change.
 
-    Inside an HA cluster the alias is written on the MASTER node only and the
-    configuration is then synchronised to the slaves. Returns
-    ``(target_instance_id, in_cluster)``.
+    Inside an HA cluster the alias is written directly on every member (master
+    and slaves) and the master's OPNsense configuration sync is also triggered.
+    Returns ``(member_ids, master_id, in_cluster)``.
     """
     base = resolve_instance_id(instance_id)
     try:
-        from .settings_store import ha_cluster_master
+        from .settings_store import ha_cluster_ids, ha_cluster_master
 
         master = ha_cluster_master(instance_id)
+        members = ha_cluster_ids(instance_id)
     except Exception:  # noqa: BLE001 - never break blocking on HA lookup
         master = None
-    if master:
-        return master, True
-    return (base or ""), False
+        members = []
+    if master and len(members) > 1:
+        return members, master, True
+    return [base or ""], (base or ""), False
+
+
+def _alias_add(api: OPNsenseAPI, alias: str, wanted: list[str]) -> tuple[list[str], list[str]]:
+    """Add ``wanted`` IPs to a node's alias; returns ``(added, present)``."""
+    row, content = api.get_alias_content(alias)
+    if row is None:
+        api.ensure_host_alias(alias, wanted)
+        _reconfigure(api)
+        return list(wanted), []
+    existing = set(content)
+    added = [ip for ip in wanted if ip not in existing]
+    present = [ip for ip in wanted if ip in existing]
+    if added:
+        api.set_alias_content(row, content + added)
+        _reconfigure(api)
+    return added, present
 
 
 def _whitelist_nets(text: str) -> list:
@@ -363,32 +381,33 @@ def apply_ips(ips: list[str], rule: str = "", source: str = "manual", reasons: d
             "message": "Mode simulation : aucune IP n'a été bloquée",
         }
 
-    target_id, in_cluster = _blocking_target(instance_id)
-    api = _api(target_id)
-    if not api.is_configured():
+    members, master_id, in_cluster = _cluster_targets(instance_id)
+    if not members:
+        return {"ok": False, "error": "Aucune instance cible", "added": []}
+    master_api = _api(master_id)
+    if not master_api.is_configured():
         return {"ok": False, "error": "Clé API OPNsense non configurée", "added": []}
 
     try:
-        row, content = api.get_alias_content(alias)
-        if row is None:
-            api.ensure_host_alias(alias, wanted)
-            _reconfigure(api)
-            added = wanted
-            present: list[str] = []
-        else:
-            existing = set(content)
-            added = [ip for ip in wanted if ip not in existing]
-            present = [ip for ip in wanted if ip in existing]
-            if added:
-                api.set_alias_content(row, content + added)
-                _reconfigure(api)
+        added, present = _alias_add(master_api, alias, wanted)
     except APIError as exc:
         return {"ok": False, "error": str(exc), "added": []}
 
-    # Inside an HA cluster the alias lives on the master; ask OPNsense to
-    # replicate the configuration (aliases included) to the slaves.
+    # In an HA cluster, propagate the change to the other nodes directly and
+    # also trigger the master's OPNsense configuration sync (the sync only
+    # covers aliases when "Aliases" is selected in the HA settings).
     if in_cluster:
-        _ha_sync(api)
+        for member in members:
+            if member == master_id:
+                continue
+            try:
+                peer = _api(member)
+                if peer.is_configured():
+                    _alias_add(peer, alias, wanted)
+                    logger.info("HA: block propagated directly to %s", member)
+            except APIError as exc:
+                logger.warning("HA: could not update alias on %s: %s", member, exc)
+        _ha_sync(master_api)
 
     ttl = int(cfg.get("blocking_ttl_hours", 0) or 0)
     escalate = bool(cfg.get("blocking_escalate", False))
@@ -482,21 +501,38 @@ def unblock_ips(ips: list[str], instance_id: str | None = None) -> dict:
     cfg = get_blocking_settings(instance_id)
     alias = str(cfg.get("blocking_alias") or "").strip()
     if alias:
-        target_id, in_cluster = _blocking_target(instance_id)
-        api = _api(target_id)
+        members, master_id, in_cluster = _cluster_targets(instance_id)
+        api = _api(master_id)
         if api.is_configured():
+            wanted = set(targets)
             try:
                 row, content = api.get_alias_content(alias)
                 if row is not None:
-                    wanted = set(targets)
                     keep = [c for c in content if c not in wanted]
                     if len(keep) != len(content):
                         api.set_alias_content(row, keep)
                         _reconfigure(api)
             except APIError as exc:
                 return {"ok": False, "error": str(exc)}
-            # Replicate the removal to the HA peers via the master's config sync.
+            # Propagate the removal to the other HA nodes directly and also
+            # trigger the master's OPNsense configuration sync.
             if in_cluster:
+                for member in members:
+                    if member == master_id:
+                        continue
+                    try:
+                        peer = _api(member)
+                        if not peer.is_configured():
+                            continue
+                        prow, pcontent = peer.get_alias_content(alias)
+                        if prow is not None:
+                            pkeep = [c for c in pcontent if c not in wanted]
+                            if len(pkeep) != len(pcontent):
+                                peer.set_alias_content(prow, pkeep)
+                                _reconfigure(peer)
+                                logger.info("HA: unblock propagated directly to %s", member)
+                    except APIError as exc:
+                        logger.warning("HA: could not update alias on %s: %s", member, exc)
                 _ha_sync(api)
     marks = ", ".join("?" for _ in targets)
     db = get_database(resolve_instance_id(instance_id))

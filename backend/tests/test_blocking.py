@@ -516,7 +516,7 @@ def test_unblock_proceeds_when_reconfigure_fails(database, monkeypatch):
 
 def test_apply_ips_ha_writes_master_and_triggers_sync(database, monkeypatch):
     monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg())
-    monkeypatch.setattr(blocker, "_blocking_target", lambda *a, **k: ("master", True))
+    monkeypatch.setattr(blocker, "_cluster_targets", lambda *a, **k: (["master"], "master", True))
     fake = FakeAPI()
     monkeypatch.setattr(blocker, "_api", lambda *a, **k: fake)
 
@@ -528,9 +528,25 @@ def test_apply_ips_ha_writes_master_and_triggers_sync(database, monkeypatch):
     assert fake.ha_syncs == 1
 
 
+def test_apply_ips_ha_writes_peer_directly(database, monkeypatch):
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg())
+    monkeypatch.setattr(blocker, "_cluster_targets", lambda *a, **k: (["master", "peer"], "master", True))
+    fakes = {"master": FakeAPI(), "peer": FakeAPI()}
+    monkeypatch.setattr(blocker, "_api", lambda iid=None, **k: fakes[iid])
+
+    result = blocker.apply_ips(["1.2.3.4"])
+
+    assert result["ok"] is True
+    assert result["added"] == ["1.2.3.4"]
+    assert fakes["master"].rows["BLOCK"]["content"] == ["1.2.3.4"]
+    assert fakes["peer"].rows["BLOCK"]["content"] == ["1.2.3.4"]
+    assert fakes["master"].ha_syncs == 1
+    assert fakes["peer"].ha_syncs == 0
+
+
 def test_unblock_ips_ha_triggers_sync(database, monkeypatch):
     monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg())
-    monkeypatch.setattr(blocker, "_blocking_target", lambda *a, **k: ("master", True))
+    monkeypatch.setattr(blocker, "_cluster_targets", lambda *a, **k: (["master"], "master", True))
     fake = FakeAPI(
         {"BLOCK": {"uuid": "u1", "name": "BLOCK", "type": "host", "enabled": "1", "content": ["1.2.3.4"]}}
     )
@@ -541,3 +557,24 @@ def test_unblock_ips_ha_triggers_sync(database, monkeypatch):
     assert result["ok"] is True
     assert fake.rows["BLOCK"]["content"] == []
     assert fake.ha_syncs == 1
+
+
+def test_unblock_ips_ha_writes_peer_directly(database, monkeypatch):
+    monkeypatch.setattr(blocker, "get_blocking_settings", lambda *a, **k: _cfg())
+    monkeypatch.setattr(blocker, "_cluster_targets", lambda *a, **k: (["master", "peer"], "master", True))
+    fakes = {
+        "master": FakeAPI(
+            {"BLOCK": {"uuid": "u1", "name": "BLOCK", "type": "host", "enabled": "1", "content": ["1.2.3.4"]}}
+        ),
+        "peer": FakeAPI(
+            {"BLOCK": {"uuid": "u1", "name": "BLOCK", "type": "host", "enabled": "1", "content": ["1.2.3.4"]}}
+        ),
+    }
+    monkeypatch.setattr(blocker, "_api", lambda iid=None, **k: fakes[iid])
+
+    result = blocker.unblock_ips(["1.2.3.4"])
+
+    assert result["ok"] is True
+    assert fakes["master"].rows["BLOCK"]["content"] == []
+    assert fakes["peer"].rows["BLOCK"]["content"] == []
+    assert fakes["master"].ha_syncs == 1
