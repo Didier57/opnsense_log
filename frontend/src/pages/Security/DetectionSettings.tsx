@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../../api/client";
 import { WhoisButton } from "../../components/Whois";
 import { formatDateTime } from "../../format";
@@ -97,6 +98,7 @@ const DEFAULT_NOTIFY: NotifyForm = {
 };
 
 export function DetectionSettings() {
+  const navigate = useNavigate();
   const [form, setForm] = useState<DetectionForm>(DEFAULT_FORM);
   const [blocking, setBlocking] = useState<BlockingForm>(DEFAULT_BLOCKING);
   const [notify, setNotify] = useState<NotifyForm>(DEFAULT_NOTIFY);
@@ -734,7 +736,19 @@ export function DetectionSettings() {
               </thead>
               <tbody>
                 {rows.map((row) => (
-                  <tr key={row.ip}>
+                  <tr
+                    key={row.ip}
+                    style={{ cursor: "pointer" }}
+                    title="Voir les journaux associés dans l'historique"
+                    onClick={() =>
+                      navigate("/historical", {
+                        state: {
+                          clauses: [{ field: "src_ip", op: "eq", value: row.ip }],
+                          logic: "AND",
+                        },
+                      })
+                    }
+                  >
                     <td className="mono">
                       {row.ip} <WhoisButton ip={row.ip} />
                     </td>
@@ -753,19 +767,28 @@ export function DetectionSettings() {
                     <td>
                       <button
                         title="Bloquer définitivement cette IP (n'expirera jamais, retrait manuel uniquement)"
-                        onClick={() => blockPermanently(row.ip)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          blockPermanently(row.ip);
+                        }}
                       >
                         Toujours bloquer
                       </button>{" "}
                       <button
                         title="Retirer du blocage et ne plus jamais bloquer cette IP (liste blanche)"
-                        onClick={() => trustIp(row.ip)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          trustIp(row.ip);
+                        }}
                       >
                         Ne jamais bloquer
                       </button>{" "}
                       <button
                         title="Retirer cette IP de l'alias et de la liste"
-                        onClick={() => unblockIp(row.ip)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          unblockIp(row.ip);
+                        }}
                       >
                         Retirer
                       </button>
