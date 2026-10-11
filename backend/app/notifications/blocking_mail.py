@@ -10,6 +10,7 @@ import html as html_lib
 import logging
 
 from ..core.security import create_unblock_token
+from ..instances import instance_label
 from ..settings_store import get_public_url
 from .dispatch import deliver
 
@@ -145,7 +146,7 @@ def send_block_notification(
         # left out of the pushed text (it would be an unreadable long link).
         ntfy_lines.append(f"**{ip}**" + (f" — {detail}" if detail else ""))
 
-    subject = "[OPNsense Log Analyzer] IP bloquée : " + ", ".join(targets)
+    subject = f"[{instance_label(instance_id)}] IP bloquée : " + ", ".join(targets)
     header = f"Les adresses IP suivantes ont été bloquées (règle : {rule_label}) :\n\n"
     hint = (
         "\n(Renseignez l'URL publique dans Paramètres → Application "

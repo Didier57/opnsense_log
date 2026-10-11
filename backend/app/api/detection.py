@@ -7,6 +7,7 @@ from ..detection.allowlist_store import add_allowlist, list_allowlist, remove_al
 from ..detection.blocking_store import get_blocking_settings, update_blocking_settings
 from ..detection.engine import clear_alerts, list_alerts, run_cycle
 from ..detection.store import get_detection_settings, update_detection_settings
+from ..instances import instance_label
 from ..notifications.dispatch import deliver
 from ..notifications.instance_store import get_notify_settings, update_notify_settings
 from ..notifications.mailer import send_test_email
@@ -101,11 +102,12 @@ def put_notify(
 
 @router.post("/settings/notify/test")
 def test_notify(instance: str | None = InstanceId, user: str = Depends(require_admin)) -> dict:
+    label = instance_label(instance)
     return deliver(
-        "[OPNsense Log Analyzer] Test de notification",
+        f"[{label}] Test de notification",
         "Ceci est un message de test envoyé par l'analyseur de logs OPNsense.",
         instance_id=instance,
-        title="[OPNsense Log Analyzer] Test",
+        title=f"[{label}] Test",
         tags=["bell"],
     )
 

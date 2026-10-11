@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from ..config import settings
-from ..instances import resolve_instance_id
+from ..instances import instance_label, resolve_instance_id
 from ..notifications.dispatch import deliver
 from ..notifications.store import get_smtp_settings
 from ..settings_store import get_public_url
@@ -574,7 +574,7 @@ def _notify(alerts: list[dict], cfg: dict, blocked_by_us: set[str] | None = None
     lines = [
         f"- [{a['severity']}] {_fmt_time(a.get('event_time'))} — {a['title']} : {a['message']}" for a in to_send
     ]
-    subject = f"[OPNsense Log Analyzer] {len(to_send)} alerte(s) de sécurité"
+    subject = f"[{instance_label(instance_id)}] {len(to_send)} alerte(s) de sécurité"
     body = "Nouvelles alertes détectées :\n\n" + "\n".join(lines) + "\n\n-- Analyseur de logs OPNsense"
     actions = None
     if ntfy_on:

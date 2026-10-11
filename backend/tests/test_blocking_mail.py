@@ -120,3 +120,19 @@ def test_block_notification_does_not_repeat_ip(monkeypatch):
 
     assert captured["ntfy_body"].count("89.149.222.99") == 1
     assert "a été bloqué 20 fois en 120s" in captured["ntfy_body"]
+
+
+def test_block_notification_subject_uses_instance_name(monkeypatch):
+    captured = {}
+
+    def fake_send(subject, body, html=None, ntfy_body=None, **kwargs):
+        captured["subject"] = subject
+        return {"ok": True, "message": "sent"}
+
+    monkeypatch.setattr(bm, "get_public_url", lambda: "")
+    monkeypatch.setattr(bm, "instance_label", lambda instance_id=None: "Macchi")
+    monkeypatch.setattr(bm, "deliver", fake_send)
+
+    bm.send_block_notification(["1.2.3.4"], rule="manual", instance_id="abc")
+
+    assert captured["subject"].startswith("[Macchi] IP bloquée")

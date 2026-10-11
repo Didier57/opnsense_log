@@ -158,6 +158,16 @@ def resolve_instance_id(instance_id: str | None = None) -> str | None:
         return None
 
 
+def instance_label(instance_id: str | None = None, default: str = "OPNsense Log Analyzer") -> str:
+    """Human-readable instance name, used as the notification subject prefix."""
+    try:
+        inst = get_instance(resolve_instance_id(instance_id))
+    except Exception:  # noqa: BLE001 - notifications must never break on this
+        inst = None
+    name = str((inst or {}).get("name") or "").strip()
+    return name or default
+
+
 def next_syslog_port() -> int:
     db = get_database(None)
     row = db.execute_read(
