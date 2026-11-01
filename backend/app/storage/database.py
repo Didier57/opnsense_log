@@ -206,7 +206,17 @@ class Database:
         self.path = path or str(Path(settings.data_dir) / settings.db_filename)
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         self._write_lock = threading.RLock()
-        config = {"timezone": "UTC"}
+        config = {
+            "timezone": "UTC",
+            # Without an explicit ceiling DuckDB budgets ~80% of the host's RAM
+            # for itself, so an idle 4 GB box showed ~2.7 GB in use and thrashed
+            # once the buffer manager spilled.
+            "memory_limit": settings.duckdb_memory_limit,
+            "threads": str(settings.duckdb_threads),
+            # Keep spill files next to the database so they land on the volume
+            # holding the logs, never inside the container's writable layer.
+            "temp_directory": str(Path(self.path).parent / "duckdb_temp"),
+        }
         self._write_conn = duckdb.connect(self.path, config=config)
         self._init_schema()
 

@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     db_filename: str = "opnsense.duckdb"
     log_retention_days: int = 30
     retention_check_interval_min: int = 60
+    # DuckDB memory ceiling per database file. Left unset, DuckDB claims ~80% of
+    # the machine's RAM even when idle, which starves a small (4 GB) host.
+    duckdb_memory_limit: str = "1GB"
+    duckdb_threads: int = 2
 
     # --- OPNsense SSH ---
     opnsense_host: str = ""

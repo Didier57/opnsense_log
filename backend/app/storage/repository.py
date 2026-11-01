@@ -1,7 +1,7 @@
 """Repository layer: batch inserts, historical search and statistics."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from ..parser.models import FirewallEvent
 from .database import _EVENT_COLUMNS, Database, get_database
@@ -85,14 +85,27 @@ class EventRepository:
     def count(self) -> int:
         return self.db.execute_read("SELECT COUNT(*) FROM events").fetchone()[0]
 
-    def recent(self, limit: int = 200) -> list[dict]:
-        """Most recent events (newest first), used to prime the live view."""
+    def recent(self, limit: int = 200, lookback_days: int = 14) -> list[dict]:
+        """Most recent events (newest first), used to prime the live view.
+
+        The scan is bounded in time so DuckDB prunes row groups through the
+        ``event_time`` zone map instead of sorting the whole table (the table is
+        no longer indexed on that column). The unbounded query only runs when
+        nothing arrived during the window, e.g. on a freshly restored database.
+        """
         limit = max(1, min(limit, 5000))
+        cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
         rows = self.db.execute_read(
             f"SELECT {_QUOTED_COLS} FROM events "
-            f'ORDER BY "event_time" DESC LIMIT ?',
-            [limit],
+            f'WHERE "event_time" >= ? ORDER BY "event_time" DESC LIMIT ?',
+            [cutoff, limit],
         ).fetchall()
+        if not rows:
+            rows = self.db.execute_read(
+                f"SELECT {_QUOTED_COLS} FROM events "
+                f'ORDER BY "event_time" DESC LIMIT ?',
+                [limit],
+            ).fetchall()
         return [dict(zip(_EVENT_COLUMNS, row)) for row in rows]
 
     # ---------------------------------------------------------------- search
