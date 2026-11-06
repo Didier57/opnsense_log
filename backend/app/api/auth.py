@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from ..config import settings
 from ..core import users as users_store
-from ..core.security import create_token
+from ..core.security import set_session_cookie
 from .deps import current_identity
 from .schemas import LoginRequest
 
@@ -13,16 +13,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 def _set_session(response: Response, username: str, role: str) -> str:
-    token = create_token(username, role)
-    response.set_cookie(
-        "access_token",
-        token,
-        httponly=True,
-        samesite="lax",
-        secure=False,
-        max_age=settings.token_expire_minutes * 60,
-    )
-    return token
+    return set_session_cookie(response, username, role)
 
 
 @router.post("/login")

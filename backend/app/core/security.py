@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -51,11 +52,57 @@ def create_token(username: str, role: str = "admin") -> str:
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 
+COOKIE_NAME = "access_token"
+
+
+def set_session_cookie(response, username: str, role: str) -> str:
+    """Issue a session token and store it in the browser cookie.
+
+    Shared by the login/setup endpoints and the sliding-refresh middleware so
+    both always apply the same cookie attributes.
+    """
+    token = create_token(username, role)
+    response.set_cookie(
+        COOKIE_NAME,
+        token,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+        max_age=settings.token_expire_minutes * 60,
+    )
+    return token
+
+
 def decode_token(token: str) -> dict | None:
     try:
         return jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
     except jwt.PyJWTError:
         return None
+
+
+def refresh_session_if_needed(request, response) -> bool:
+    """Slide an active session forward by reissuing its cookie.
+
+    The cookie is renewed only during the second half of the token lifetime, so
+    a visitor who keeps using the site is never logged out mid-session while a
+    single ``Set-Cookie`` is emitted per half-window instead of on every call.
+    Returns ``True`` when a fresh cookie was written.
+    """
+    if not settings.auth_enabled:
+        return False
+    token = request.cookies.get(COOKIE_NAME)
+    if not token:
+        return False
+    payload = decode_token(token)
+    if payload is None:
+        return False
+    expires_at = payload.get("exp")
+    if isinstance(expires_at, (int, float)) and expires_at - time.time() > (
+        settings.token_expire_minutes * 60
+    ) / 2:
+        return False
+    set_session_cookie(response, payload.get("sub", ""), payload.get("role") or "admin")
+    return True
 
 
 def create_unblock_token(ip: str, days: int = 7, instance_id: str | None = None) -> str:

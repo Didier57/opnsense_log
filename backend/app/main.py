@@ -7,13 +7,14 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from .api import api_router
 from .config import settings
 from .core.logging import setup_logging
+from .core.security import refresh_session_if_needed
 from .core.stats import counters
 from .detection.engine import detection_loop
 from .geoip.resolver import geo_update_loop
@@ -343,6 +344,19 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+
+
+@app.middleware("http")
+async def _slide_session(request: Request, call_next):
+    """Keep an active session alive by reissuing the token cookie.
+
+    Without this a user who browses the site for longer than the token lifetime
+    (``TOKEN_EXPIRE_MINUTES``) is logged out mid-visit.
+    """
+    response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        refresh_session_if_needed(request, response)
+    return response
 
 # Serve the built frontend when present (production container).
 _static_dir = Path(__file__).resolve().parent.parent / "static"

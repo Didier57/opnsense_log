@@ -106,7 +106,7 @@ class Settings(BaseSettings):
     # Generate with scripts/hash_password.py
     auth_password_hash: str = ""
     secret_key: str = "change-me-in-production"
-    token_expire_minutes: int = 480
+    token_expire_minutes: int = 10080
 
     # --- Logging ---
     log_level: str = "INFO"
