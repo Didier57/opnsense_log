@@ -9,7 +9,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # ---------- Stage 2: backend + served frontend ----------
-FROM python:3.12-slim AS backend
+FROM python:3.13-slim AS backend
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -20,12 +20,17 @@ ENV PYTHONUNBUFFERED=1 \
     DATA_DIR=/data
 
 WORKDIR /app
+
+# Pick up the Debian security updates published after the base image was built.
+# No extra package is installed: the health check below uses Python so that
+# curl (and its CVE-laden libcurl) never ships in the runtime image.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get -y upgrade \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m pip install --no-cache-dir --upgrade pip \
+    && python -m pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ ./
 COPY --from=frontend /frontend/dist ./static
@@ -35,6 +40,6 @@ EXPOSE 5140/udp
 EXPOSE 5140/tcp
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD curl -fsS http://localhost:8080/api/health || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health', timeout=4)"
 
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
