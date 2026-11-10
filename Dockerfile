@@ -32,6 +32,12 @@ COPY backend/requirements.txt ./
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir -r requirements.txt
 
+# Compatibility shim for container managers that inject a "curl -fsS <url>"
+# health check: keeps their check green without shipping curl/libcurl (which
+# accounted for most of the image's CVEs). GET only, see docker/curl-shim.
+COPY docker/curl-shim /usr/local/bin/curl
+RUN chmod 755 /usr/local/bin/curl
+
 COPY backend/ ./
 COPY --from=frontend /frontend/dist ./static
 

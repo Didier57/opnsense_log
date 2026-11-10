@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""Minimal curl replacement, used only by container health checks.
+
+The runtime image intentionally ships without curl/libcurl because they carried
+most of the image's CVEs. Some container managers, however, inject a health
+check of the form ``curl -fsS <url> || exit 1``. This shim implements just
+enough of curl's command line to keep those health checks working: it performs a
+GET request, prints the body, exits 0 on a 2xx/3xx response and non-zero
+otherwise (22 on an HTTP error, 7 on a connection error, like curl).
+
+It is not a general-purpose curl: POST, uploads, redirect options, output files
+and other switches are not supported.
+"""
+from __future__ import annotations
+
+import sys
+import urllib.error
+import urllib.request
+
+TIMEOUT_SECONDS = 10
+
+
+def main(argv: list[str]) -> int:
+    url = next((arg for arg in argv[1:] if not arg.startswith("-")), None)
+    if not url:
+        print("curl: no URL specified", file=sys.stderr)
+        return 2
+    try:
+        with urllib.request.urlopen(url, timeout=TIMEOUT_SECONDS) as response:
+            body = response.read()
+    except urllib.error.HTTPError as exc:
+        print(
+            f"curl: (22) The requested URL returned error: {exc.code}",
+            file=sys.stderr,
+        )
+        return 22
+    except Exception as exc:  # noqa: BLE001 - connection refused, DNS, timeout...
+        print(f"curl: (7) Failed to connect: {exc}", file=sys.stderr)
+        return 7
+    sys.stdout.write(body.decode("utf-8", "replace"))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
